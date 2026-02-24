@@ -27,7 +27,7 @@ void printBanner() {
   print(cyan('  ███████║   ██║   ██║  ██║    ╚██████╗███████╗██║'));
   print(cyan('  ╚══════╝   ╚═╝   ╚═╝  ╚═╝     ╚═════╝╚══════╝╚═╝'));
   print('');
-  print(magenta('  ✦ STA CLI — Flutter Project Generator v1.0.0 ✦'));
+  print(magenta('  ✦ STA CLI — Flutter Project Generator v1.0.1 ✦'));
   print(gray('  Scaffold your Flutter MVC project in seconds'));
   print('');
 }

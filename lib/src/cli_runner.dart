@@ -4,9 +4,84 @@ import 'colors.dart';
 import 'prompts.dart';
 import 'project_creator.dart';
 
+// ─── Detection result models ────────────────────────────────────────────────
+
+class FlutterInfo {
+  final bool available;
+  final String version;
+  final String channel;
+  final String dartVersion;
+  final String path;
+
+  const FlutterInfo({
+    required this.available,
+    this.version = '',
+    this.channel = '',
+    this.dartVersion = '',
+    this.path = '',
+  });
+}
+
+class FvmInfo {
+  final bool available;
+  final String fvmVersion;
+  final List<String> installedVersions;
+  final String? activeVersion;
+
+  const FvmInfo({
+    required this.available,
+    this.fvmVersion = '',
+    this.installedVersions = const [],
+    this.activeVersion,
+  });
+}
+
+class EnvironmentInfo {
+  final FlutterInfo flutter;
+  final FvmInfo fvm;
+  const EnvironmentInfo({required this.flutter, required this.fvm});
+}
+
+// ─── Internal runner models ──────────────────────────────────────────────────
+
+class _RunnerOption {
+  final String label;
+  final String command;
+  final bool isFvm;
+  final String version;
+  _RunnerOption({
+    required this.label,
+    required this.command,
+    required this.isFvm,
+    required this.version,
+  });
+}
+
+class _RunnerInfo {
+  final String command;
+  final bool isFvm;
+  final String version;
+  final String label;
+  _RunnerInfo({
+    required this.command,
+    required this.isFvm,
+    required this.version,
+    required this.label,
+  });
+}
+
+// ─── CLI Runner ──────────────────────────────────────────────────────────────
+
 class CliRunner {
+  late EnvironmentInfo _env;
+
   Future<void> run(List<String> args) async {
     printBanner();
+
+    // Auto-detect environment on every invocation
+    stdout.write(gray('  Scanning environment...'));
+    _env = await _detectEnvironment();
+    stdout.write('\r                                    \r');
 
     if (args.isNotEmpty && (args[0] == '--help' || args[0] == '-h')) {
       _printHelp();
@@ -14,7 +89,12 @@ class CliRunner {
     }
 
     if (args.isNotEmpty && (args[0] == '--version' || args[0] == '-v')) {
-      print(cyan('  STA CLI v1.0.0'));
+      _printVersion();
+      return;
+    }
+
+    if (args.isNotEmpty && args[0] == 'doctor') {
+      _printDoctor();
       return;
     }
 
@@ -26,54 +106,258 @@ class CliRunner {
     await _runCreateFlow(args.skip(1).toList());
   }
 
+  // ─── Environment Detection ──────────────────────────────────────────────
+
+  Future<EnvironmentInfo> _detectEnvironment() async {
+    final results = await Future.wait([_detectFlutter(), _detectFvm()]);
+    return EnvironmentInfo(
+      flutter: results[0] as FlutterInfo,
+      fvm: results[1] as FvmInfo,
+    );
+  }
+
+  Future<FlutterInfo> _detectFlutter() async {
+    // Try machine-readable output first
+    var result = await _runCommand('flutter --version --machine');
+    if (result.$1 == 0 && result.$2.trim().isNotEmpty) {
+      final out = result.$2;
+      final versionMatch = RegExp(r'"frameworkVersion"\s*:\s*"([^"]+)"').firstMatch(out);
+      final channelMatch = RegExp(r'"channel"\s*:\s*"([^"]+)"').firstMatch(out);
+      final dartMatch = RegExp(r'"dartSdkVersion"\s*:\s*"([^"]+)"').firstMatch(out);
+      final pathResult = await _runCommand('which flutter');
+      return FlutterInfo(
+        available: true,
+        version: versionMatch?.group(1) ?? 'unknown',
+        channel: channelMatch?.group(1) ?? 'unknown',
+        dartVersion: dartMatch?.group(1)?.split(' ').first ?? 'unknown',
+        path: pathResult.$2.trim(),
+      );
+    }
+
+    // Fallback: plain text
+    result = await _runCommand('flutter --version');
+    if (result.$1 != 0) return const FlutterInfo(available: false);
+
+    final out = result.$2;
+    final versionMatch = RegExp(r'Flutter\s+(\S+)').firstMatch(out);
+    final channelMatch = RegExp(r'channel\s+(\S+)').firstMatch(out);
+    final dartMatch = RegExp(r'Dart\s+(\S+)').firstMatch(out);
+    final pathResult = await _runCommand('which flutter');
+
+    return FlutterInfo(
+      available: true,
+      version: versionMatch?.group(1) ?? 'unknown',
+      channel: channelMatch?.group(1) ?? 'unknown',
+      dartVersion: dartMatch?.group(1) ?? 'unknown',
+      path: pathResult.$2.trim(),
+    );
+  }
+
+  Future<FvmInfo> _detectFvm() async {
+    final versionResult = await _runCommand('fvm --version');
+    if (versionResult.$1 != 0) return const FvmInfo(available: false);
+
+    final fvmVersion = versionResult.$2.trim().split('\n').first;
+    final listResult = await _runCommand('fvm list');
+    final installedVersions = <String>[];
+    String? activeVersion;
+
+    if (listResult.$1 == 0) {
+      final lines = listResult.$2.split('\n');
+      for (final line in lines) {
+        final trimmed = line.trim();
+        if (trimmed.isEmpty ||
+            trimmed.startsWith('Cache') ||
+            trimmed.startsWith('─') ||
+            trimmed.startsWith('Flutter')) continue;
+
+        final vMatch =
+            RegExp(r'(\d+\.\d+\.\d+\S*|stable|beta|master|main)').firstMatch(trimmed);
+        if (vMatch == null) continue;
+        final v = vMatch.group(1)!;
+
+        final isActive = trimmed.contains('✓') ||
+            trimmed.contains('active') ||
+            trimmed.startsWith('→') ||
+            trimmed.contains('(active)');
+
+        installedVersions.add(v);
+        if (isActive) activeVersion = v;
+      }
+    }
+
+    return FvmInfo(
+      available: true,
+      fvmVersion: fvmVersion,
+      installedVersions: installedVersions,
+      activeVersion: activeVersion,
+    );
+  }
+
+  // ─── Doctor ─────────────────────────────────────────────────────────────
+
+  void _printDoctor() {
+    print(cyan('  ═══════════════════════════════════════════════════'));
+    print(cyan('                  ENVIRONMENT DOCTOR                  '));
+    print(cyan('  ═══════════════════════════════════════════════════'));
+    print('');
+
+    final f = _env.flutter;
+    if (f.available) {
+      print(green('  ✔ Flutter') + gray(' detected'));
+      print(gray('      Version : ') + white(f.version));
+      print(gray('      Channel : ') + yellow(f.channel));
+      print(gray('      Dart    : ') + cyan(f.dartVersion));
+      if (f.path.isNotEmpty) print(gray('      Path    : ') + gray(f.path));
+    } else {
+      print(red('  ✘ Flutter not found'));
+      print(gray('      → Install: https://flutter.dev/docs/get-started/install'));
+    }
+
+    print('');
+
+    final fvm = _env.fvm;
+    if (fvm.available) {
+      print(green('  ✔ FVM') + gray(' v${fvm.fvmVersion}'));
+      if (fvm.installedVersions.isEmpty) {
+        print(gray('      No Flutter versions installed via FVM yet.'));
+        print(gray('      → Run: ') + white('fvm install stable'));
+      } else {
+        print(gray('      Installed versions:'));
+        for (final v in fvm.installedVersions) {
+          final isActive = v == fvm.activeVersion;
+          if (isActive) {
+            print('      ${green('▶')} ${green(v)} ${gray('← active')}');
+          } else {
+            print('        ${white(v)}');
+          }
+        }
+      }
+    } else {
+      print(yellow('  ⚠ FVM not installed'));
+      print(gray('      → Install: dart pub global activate fvm'));
+    }
+
+    print('');
+
+    if (!f.available) {
+      print(red('  ✘ Flutter is required. Please install it first.'));
+    } else {
+      print(green('  ✔ Ready!') + gray(' Run: ') + cyan('sta create'));
+    }
+    print('');
+  }
+
+  // ─── Help ────────────────────────────────────────────────────────────────
+
+  void _printEnvStatus() {
+    final f = _env.flutter;
+    final fvm = _env.fvm;
+    print(gray('  ┌─ Environment ───────────────────────────────────────┐'));
+    if (f.available) {
+      print(gray('  │  ') +
+          green('✔ Flutter ') +
+          white(f.version) +
+          gray(' · ') +
+          yellow(f.channel) +
+          gray(' channel · Dart ') +
+          cyan(f.dartVersion));
+    } else {
+      print(gray('  │  ') + red('✘ Flutter not found in PATH'));
+    }
+    if (fvm.available) {
+      final vCount = '${fvm.installedVersions.length} version(s) installed';
+      final active = fvm.activeVersion != null
+          ? gray(' · active: ') + green(fvm.activeVersion!)
+          : '';
+      print(gray('  │  ') + green('✔ FVM ') + white(fvm.fvmVersion) +
+          gray(' · $vCount') + active);
+    } else {
+      print(gray('  │  ') + yellow('⚠ FVM not installed'));
+    }
+    print(gray('  └────────────────────────────────────────────────────┘'));
+    print('');
+  }
+
+  void _printHelp() {
+    _printEnvStatus();
+
+    print(white('  Commands:'));
+    print('');
+    print('    ${cyan('sta create')} ${yellow('[project_name]')}');
+    print(gray('      Interactively scaffold a new Flutter MVC project'));
+    print('');
+    print('    ${cyan('sta doctor')}');
+    print(gray('      Show auto-detected Flutter & FVM environment info'));
+    print('');
+    print('    ${cyan('sta --version')}  ${gray('/')}  ${cyan('-v')}   Show STA CLI version');
+    print('    ${cyan('sta --help')}     ${gray('/')}  ${cyan('-h')}   Show this screen');
+    print('');
+
+    print(white('  Examples:'));
+    print('');
+    print('    ${gray('\$')} ${cyan('sta create')}');
+    print('    ${gray('\$')} ${cyan('sta create my_shop_app')}');
+    print('    ${gray('\$')} ${cyan('sta doctor')}');
+    print('');
+
+    print(white('  Generated project features:'));
+    print('');
+    final features = [
+      ('GetX', 'State management, routing, DI'),
+      ('MVC', 'controller / model / repository / view / shared / core'),
+      ('Network', 'HTTP service with auto token-refresh (401 handling)'),
+      ('Auth', 'Splash → Sign In → Sign Up → Home'),
+      ('Widgets', 'AppButton, AppTextField, OTP field, AppBar, Divider'),
+      ('Theme', 'Light & Dark theme, AppColors, AppTheme'),
+      ('Storage', 'GetStorage for local persistence'),
+      ('Messenger', 'Toasts, top snackbar (success/error/info)'),
+    ];
+    for (final f in features) {
+      print('    ${green('✔')} ${white(f.$1.padRight(12))} ${gray(f.$2)}');
+    }
+    print('');
+
+    print(white('  Auto-added dependencies:'));
+    print('');
+    final deps = [
+      'get', 'logger', 'top_snackbar_flutter', 'fluttertoast',
+      'http', 'loading_animation_widget', 'get_storage', 'pinput',
+    ];
+    print('    ' + deps.map(cyan).join(gray('  ·  ')));
+    print('');
+  }
+
+  void _printVersion() {
+    _printEnvStatus();
+    print(white('  STA CLI ') + cyan('v1.0.0'));
+    print(gray('  Flutter project scaffolding CLI — built with Dart'));
+    print('');
+  }
+
+  // ─── Create flow ─────────────────────────────────────────────────────────
+
   Future<void> _runCreateFlow(List<String> args) async {
+    if (!_env.flutter.available) {
+      printError('Flutter is not installed or not found in PATH.');
+      printInfo('Install Flutter: https://flutter.dev/docs/get-started/install');
+      exit(1);
+    }
+
+    _printEnvStatus();
+
     print(cyan('  ═══════════════════════════════════════════════════'));
     print(cyan('               CREATE NEW FLUTTER PROJECT             '));
     print(cyan('  ═══════════════════════════════════════════════════'));
     print('');
 
-    // ── Step 1: Flutter / FVM version ───────────────────────────────────
-    printStep(1, 4, 'Flutter / FVM Configuration');
+    // Step 1 — Runner
+    printStep(1, 4, 'Flutter Runner');
     printDivider();
-
-    final flutterMode = selectOption(
-      'Which Flutter runner do you want to use?',
-      ['Flutter (system)', 'FVM (Flutter Version Manager)'],
-      defaultIndex: 0,
-    );
-
-    String flutterCommand;
-    String flutterVersion = '';
-
-    if (flutterMode == 1) {
-      // FVM
-      flutterVersion = prompt('FVM Flutter version', defaultValue: 'stable');
-      flutterCommand = 'fvm use $flutterVersion --force && fvm flutter';
-      printInfo('Using FVM with Flutter $flutterVersion');
-
-      // Check if fvm is installed
-      final fvmCheck = await _runCommand('fvm --version');
-      if (fvmCheck.$1 != 0) {
-        printWarning('FVM not found. Install with: dart pub global activate fvm');
-        printInfo('Falling back to system Flutter...');
-        flutterCommand = 'flutter';
-      }
-    } else {
-      flutterCommand = 'flutter';
-      // Check flutter version available
-      final result = await _runCommand('flutter --version');
-      if (result.$1 == 0) {
-        final versionLine = result.$2.split('\n').first;
-        printInfo('Found: $versionLine');
-      } else {
-        printError('Flutter not found in PATH. Please install Flutter first.');
-        exit(1);
-      }
-    }
-
+    final runnerInfo = await _selectRunner();
     print('');
 
-    // ── Step 2: Project Name ─────────────────────────────────────────────
+    // Step 2 — Project details
     printStep(2, 4, 'Project Details');
     printDivider();
 
@@ -82,100 +366,54 @@ class CliRunner {
       projectName = prompt('Project name (snake_case)', defaultValue: 'my_app');
     }
 
-    // Sanitize project name
     projectName = projectName
         .toLowerCase()
         .replaceAll(RegExp(r'[^a-z0-9_]'), '_')
-        .replaceAll(RegExp(r'_+'), '_');
+        .replaceAll(RegExp(r'_+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
 
-    if (projectName.isEmpty || RegExp(r'^[0-9]').hasMatch(projectName)) {
+    if (projectName.isEmpty || RegExp(r'^\d').hasMatch(projectName)) {
       printError('Invalid project name. Use snake_case (e.g. my_awesome_app)');
       exit(1);
     }
 
-    final orgName = prompt('Organization name', defaultValue: 'com.example');
+    printInfo('Project name: ${green(projectName)}');
+    final orgName = prompt('Organization ID', defaultValue: 'com.example');
     final packageName = '$orgName.$projectName';
-    printInfo('Package ID: $packageName');
-
+    printInfo('Package ID  : ${yellow(packageName)}');
     print('');
 
-    // ── Step 3: Project path ─────────────────────────────────────────────
+    // Step 3 — Location
     printStep(3, 4, 'Project Location');
     printDivider();
-
-    final locationChoice = selectOption(
-      'Where do you want to create the project?',
-      [
-        'Current directory (${Directory.current.path})',
-        'Android Studio Projects (~/AndroidStudioProjects)',
-        'Custom path',
-      ],
-      defaultIndex: 0,
-    );
-
-    String basePath;
-    switch (locationChoice) {
-      case 0:
-        basePath = Directory.current.path;
-        break;
-      case 1:
-        final home = Platform.environment['HOME'] ??
-            Platform.environment['USERPROFILE'] ??
-            Directory.current.path;
-        basePath = p.join(home, 'AndroidStudioProjects');
-        // Create if not exists
-        final dir = Directory(basePath);
-        if (!await dir.exists()) {
-          printInfo('Creating AndroidStudioProjects folder...');
-          await dir.create(recursive: true);
-        }
-        break;
-      case 2:
-        final customPath = prompt('Enter custom path');
-        basePath = customPath.isEmpty ? Directory.current.path : customPath;
-        break;
-      default:
-        basePath = Directory.current.path;
-    }
-
+    final basePath = await _selectLocation();
     final projectPath = p.join(basePath, projectName);
-    printInfo('Project will be created at: $projectPath');
+    printInfo('Full path: ${blue(projectPath)}');
 
     if (await Directory(projectPath).exists()) {
-      printWarning('Directory already exists: $projectPath');
+      print('');
+      printWarning('Directory already exists.');
       final overwrite = confirm('Overwrite?', defaultYes: false);
-      if (!overwrite) {
-        printInfo('Aborted.');
-        exit(0);
-      }
+      if (!overwrite) { printInfo('Aborted.'); exit(0); }
     }
-
     print('');
 
-    // ── Step 4: Platform selection ───────────────────────────────────────
-    printStep(4, 4, 'Platform & Summary');
+    // Step 4 — Summary & confirm
+    printStep(4, 4, 'Confirm & Create');
     printDivider();
+    _printSummary(
+      projectName: projectName,
+      packageName: packageName,
+      projectPath: projectPath,
+      runnerLabel: runnerInfo.label,
+    );
 
-    print(white('  Project Summary:'));
-    print(gray('  ┌─────────────────────────────────────────────┐'));
-    print(gray('  │ ') + '  Name    : ${cyan(projectName)}');
-    print(gray('  │ ') + '  Package : ${yellow(packageName)}');
-    print(gray('  │ ') + '  Path    : ${blue(projectPath)}');
-    print(gray('  │ ') + '  Runner  : ${magenta(flutterMode == 1 ? 'FVM ($flutterVersion)' : 'Flutter (system)')}');
-    print(gray('  └─────────────────────────────────────────────┘'));
+    final ok = confirm('Proceed?', defaultYes: true);
+    if (!ok) { printInfo('Aborted.'); exit(0); }
     print('');
 
-    final confirmed = confirm('Proceed with project creation?', defaultYes: true);
-    if (!confirmed) {
-      printInfo('Aborted by user.');
-      exit(0);
-    }
-
-    print('');
     await _createProject(
-      flutterCommand: flutterCommand,
-      flutterMode: flutterMode,
-      flutterVersion: flutterVersion,
+      runnerInfo: runnerInfo,
       projectName: projectName,
       projectPath: projectPath,
       packageName: packageName,
@@ -183,133 +421,242 @@ class CliRunner {
     );
   }
 
+  // ─── Runner picker (fully driven by auto-detection) ─────────────────────
+
+  Future<_RunnerInfo> _selectRunner() async {
+    final f = _env.flutter;
+    final fvm = _env.fvm;
+    final options = <_RunnerOption>[];
+
+    if (f.available) {
+      options.add(_RunnerOption(
+        label: 'Flutter ${f.version} (${f.channel})  ← system install',
+        command: 'flutter',
+        isFvm: false,
+        version: f.version,
+      ));
+    }
+
+    if (fvm.available) {
+      if (fvm.installedVersions.isNotEmpty) {
+        for (final v in fvm.installedVersions) {
+          final tag = v == fvm.activeVersion ? '  ← active' : '';
+          options.add(_RunnerOption(
+            label: 'FVM  →  $v$tag',
+            command: 'fvm flutter',
+            isFvm: true,
+            version: v,
+          ));
+        }
+      }
+      // Always allow installing a new FVM version
+      options.add(_RunnerOption(
+        label: 'FVM  →  install a different version…',
+        command: 'fvm flutter',
+        isFvm: true,
+        version: '__ask__',
+      ));
+    }
+
+    if (options.isEmpty) {
+      printError('No Flutter runner found. Install Flutter or FVM first.');
+      exit(1);
+    }
+
+    final idx = selectOption(
+      'Select Flutter runner (auto-detected):',
+      options.map((o) => o.label).toList(),
+      defaultIndex: 0,
+    );
+    final choice = options[idx];
+
+    if (choice.version == '__ask__') {
+      print('');
+      printInfo('Common options: stable · beta · 3.24.5 · 3.22.3 · 3.19.6');
+      final v = prompt('FVM version to install', defaultValue: 'stable');
+      print('');
+      print(cyan('  ● Installing Flutter $v via FVM...'));
+      final r = await _runCommandLive('fvm install $v');
+      if (r == 0) {
+        printSuccess('Installed Flutter $v');
+      } else {
+        printWarning('Install may have had issues — proceeding anyway.');
+      }
+      return _RunnerInfo(
+        command: 'fvm flutter',
+        isFvm: true,
+        version: v,
+        label: 'FVM → $v',
+      );
+    }
+
+    return _RunnerInfo(
+      command: choice.command,
+      isFvm: choice.isFvm,
+      version: choice.version,
+      label: choice.label,
+    );
+  }
+
+  // ─── Location picker ──────────────────────────────────────────────────────
+
+  Future<String> _selectLocation() async {
+    final home = Platform.environment['HOME'] ??
+        Platform.environment['USERPROFILE'] ??
+        Directory.current.path;
+    final androidPath = p.join(home, 'AndroidStudioProjects');
+    final androidExists = await Directory(androidPath).exists();
+
+    final options = [
+      'Current directory   (${Directory.current.path})',
+      '~/AndroidStudioProjects${androidExists ? '' : '  (will be created)'}',
+      'Enter custom path…',
+    ];
+
+    final choice = selectOption('Project location:', options, defaultIndex: 0);
+    switch (choice) {
+      case 0:
+        return Directory.current.path;
+      case 1:
+        if (!androidExists) {
+          await Directory(androidPath).create(recursive: true);
+          printInfo('Created ~/AndroidStudioProjects');
+        }
+        return androidPath;
+      case 2:
+        final raw = prompt('Full path', defaultValue: Directory.current.path);
+        final expanded = raw.startsWith('~') ? raw.replaceFirst('~', home) : raw;
+        final dir = Directory(expanded);
+        if (!await dir.exists()) {
+          await dir.create(recursive: true);
+          printInfo('Created $expanded');
+        }
+        return expanded;
+      default:
+        return Directory.current.path;
+    }
+  }
+
+  // ─── Summary ──────────────────────────────────────────────────────────────
+
+  void _printSummary({
+    required String projectName,
+    required String packageName,
+    required String projectPath,
+    required String runnerLabel,
+  }) {
+    print(white('  Project Summary'));
+    print(gray('  ┌──────────────────────────────────────────────────┐'));
+    print(gray('  │  ') + gray('Name    : ') + cyan(projectName));
+    print(gray('  │  ') + gray('Package : ') + yellow(packageName));
+    print(gray('  │  ') + gray('Path    : ') + blue(projectPath));
+    print(gray('  │  ') + gray('Runner  : ') + magenta(runnerLabel));
+    print(gray('  │'));
+    print(gray('  │  ') + white('Dependencies:'));
+    final deps = ['get', 'logger', 'top_snackbar_flutter', 'fluttertoast',
+                  'http', 'loading_animation_widget', 'get_storage', 'pinput'];
+    for (var i = 0; i < deps.length; i += 4) {
+      final row = deps.skip(i).take(4).map(cyan).join(gray('  '));
+      print(gray('  │    ') + row);
+    }
+    print(gray('  └──────────────────────────────────────────────────┘'));
+    print('');
+  }
+
+  // ─── Project creation ─────────────────────────────────────────────────────
+
   Future<void> _createProject({
-    required String flutterCommand,
-    required int flutterMode,
-    required String flutterVersion,
+    required _RunnerInfo runnerInfo,
     required String projectName,
     required String projectPath,
     required String packageName,
     required String orgName,
   }) async {
-    print(cyan('  ● Running flutter create...'));
-
-    // Flutter create
-    final createCmd = flutterMode == 1
-        ? 'fvm flutter create --org $orgName $projectPath'
-        : 'flutter create --org $orgName $projectPath';
-
+    // 1. flutter create
+    print(cyan('  ● Running ${runnerInfo.command} create...'));
+    final createCmd =
+        '${runnerInfo.command} create --org $orgName --project-name $projectName "$projectPath"';
     final createResult = await _runCommandLive(createCmd);
     if (createResult != 0) {
-      printError('flutter create failed. Aborting.');
+      printError('flutter create failed. See output above.');
       exit(1);
     }
-    printSuccess('Flutter project created!');
+    printSuccess('Flutter project scaffolded!');
 
-    // FVM: set version in project
-    if (flutterMode == 1 && flutterVersion.isNotEmpty) {
+    // 2. FVM pin
+    if (runnerInfo.isFvm) {
       print('');
-      print(cyan('  ● Setting FVM version in project...'));
-      await _runCommandLive('cd "$projectPath" && fvm use $flutterVersion');
+      print(cyan('  ● Pinning FVM version ${runnerInfo.version}...'));
+      await _runCommandLive('cd "$projectPath" && fvm use ${runnerInfo.version} --force');
+      printSuccess('.fvmrc created in project root');
     }
 
+    // 3. MVC files
     print('');
-    print(cyan('  ● Creating MVC folder structure...'));
-
+    print(cyan('  ● Writing MVC structure & source files...'));
     final creator = ProjectCreator(
       projectName: projectName,
       projectPath: projectPath,
       packageName: packageName,
     );
-
     await creator.createStructure();
-    printSuccess('Folder structure created!');
-
-    print('');
-    print(cyan('  ● Writing source files...'));
     await creator.writeAllFiles();
+    printSuccess('Source files written!');
 
+    // 4. pubspec
     print('');
-    print(cyan('  ● Updating pubspec.yaml with dependencies...'));
+    print(cyan('  ● Updating pubspec.yaml...'));
     await creator.updatePubspec();
-    printSuccess('pubspec.yaml updated!');
+    printSuccess('Dependencies added!');
 
+    // 5. pub get
     print('');
-    print(cyan('  ● Running flutter pub get...'));
-    final pubGetCmd = flutterMode == 1
-        ? 'cd "$projectPath" && fvm flutter pub get'
-        : 'cd "$projectPath" && flutter pub get';
-    final pubGetResult = await _runCommandLive(pubGetCmd);
-    if (pubGetResult == 0) {
-      printSuccess('Dependencies installed!');
+    print(cyan('  ● Running pub get...'));
+    final pubResult = await _runCommandLive(
+      'cd "$projectPath" && ${runnerInfo.command} pub get',
+    );
+    if (pubResult == 0) {
+      printSuccess('All packages installed!');
     } else {
-      printWarning('pub get failed. Run manually: flutter pub get');
+      printWarning('pub get had issues. Run manually: ${runnerInfo.command} pub get');
     }
 
     print('');
-    _printComplete(projectName, projectPath, flutterMode);
+    _printComplete(projectName, projectPath, runnerInfo);
   }
 
-  void _printComplete(String name, String path, int flutterMode) {
-    final runCmd = flutterMode == 1 ? 'fvm flutter run' : 'flutter run';
-    print(green('  ╔══════════════════════════════════════════════════╗'));
-    print(green('  ║         🎉  PROJECT CREATED SUCCESSFULLY!         ║'));
-    print(green('  ╚══════════════════════════════════════════════════╝'));
+  void _printComplete(String name, String path, _RunnerInfo runner) {
+    print(green('  ╔════════════════════════════════════════════════════╗'));
+    print(green('  ║         🎉  PROJECT CREATED SUCCESSFULLY!           ║'));
+    print(green('  ╚════════════════════════════════════════════════════╝'));
     print('');
     print(white('  Next steps:'));
     print('');
-    print('  ${cyan('1.')} cd $name');
-    print('  ${cyan('2.')} $runCmd');
+    print('    ${cyan('\$')} cd ${green(name)}');
+    print('    ${cyan('\$')} ${runner.command} run');
     print('');
-    print(gray('  Project path: $path'));
+    if (runner.isFvm) {
+      print(gray('  Tip: Project is pinned to Flutter ${runner.version} via FVM.'));
+      print(gray('       Android Studio / VS Code will use this version automatically.'));
+      print('');
+    }
+    print(gray('  Path: $path'));
     print('');
-    print(magenta('  Happy coding! ✦ Built with STA CLI'));
-    print('');
-  }
-
-  void _printHelp() {
-    print(white('  Usage:'));
-    print('');
-    print('    ${cyan('sta create')} ${yellow('[project_name]')}    Create a new Flutter project');
-    print('    ${cyan('sta --help')}                   Show this help message');
-    print('    ${cyan('sta --version')}                Show CLI version');
-    print('');
-    print(white('  Examples:'));
-    print('');
-    print('    ${gray('sta create')}');
-    print('    ${gray('sta create my_awesome_app')}');
-    print('');
-    print(white('  The generated project includes:'));
-    print('');
-    print('    ${green('✔')} GetX state management');
-    print('    ${green('✔')} MVC folder structure');
-    print('    ${green('✔')} Network layer (HTTP + token refresh)');
-    print('    ${green('✔')} Auth flow (sign in, sign up, splash)');
-    print('    ${green('✔')} Shared widgets (buttons, text fields, OTP)');
-    print('    ${green('✔')} Theme, routing, and error handling');
-    print('    ${green('✔')} Pre-configured dependencies');
+    print(magenta('  Happy coding! ✦ STA CLI'));
     print('');
   }
 
-  /// Run command silently, return (exitCode, stdout)
+  // ─── Low-level helpers ────────────────────────────────────────────────────
+
   Future<(int, String)> _runCommand(String cmd) async {
-    final result = await Process.run(
-      'bash',
-      ['-c', cmd],
-      runInShell: true,
-    );
-    return (result.exitCode, result.stdout.toString());
+    final r = await Process.run('bash', ['-c', cmd], runInShell: true);
+    return (r.exitCode, r.stdout.toString());
   }
 
-  /// Run command with live output piped to terminal
   Future<int> _runCommandLive(String cmd) async {
-    final process = await Process.start(
-      'bash',
-      ['-c', cmd],
-      runInShell: true,
-    );
-    process.stdout.listen((data) => stdout.add(data));
-    process.stderr.listen((data) => stderr.add(data));
-    return await process.exitCode;
+    final proc = await Process.start('bash', ['-c', cmd], runInShell: true);
+    proc.stdout.listen((d) => stdout.add(d));
+    proc.stderr.listen((d) => stderr.add(d));
+    return await proc.exitCode;
   }
 }

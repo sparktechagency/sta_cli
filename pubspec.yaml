@@ -1,6 +1,6 @@
 name: sta_cli
 description: STA CLI - Flutter project scaffolding tool
-version: 1.0.0
+version: 1.0.1
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -12,7 +12,7 @@ dependencies:
   ansicolor: ^2.0.2
 
 dev_dependencies:
-  lints: ^3.0.0
+  lints: ^6.1.0
 
 executables:
   sta: main

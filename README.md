@@ -49,7 +49,7 @@ sta create my_app
 ```bash
 cd sta_cli
 dart pub get
-dart run bin/main.dart create
+dart run bin/sta_cli.dart create
 ```
 
 ### Option 3 — Compile to native executable
@@ -57,7 +57,7 @@ dart run bin/main.dart create
 ```bash
 cd sta_cli
 dart pub get
-dart compile exe bin/main.dart -o sta
+dart compile exe bin/sta_cli.dart -o sta
 # Move to your PATH:
 sudo mv sta /usr/local/bin/sta
 ```

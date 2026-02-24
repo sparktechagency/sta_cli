@@ -54,7 +54,7 @@ class ProjectCreator {
     final pkg = packageName;
     return {
       // ── main.dart ──────────────────────────────────────────────────────
-      'lib/main.dart': '''import 'package:flutter/material.dart';
+      'lib/sta_cli.dart': '''import 'package:flutter/material.dart';
 import 'package:get_storage/get_storage.dart';
 
 import 'app.dart';

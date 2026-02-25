@@ -383,13 +383,13 @@ class CliRunner {
       'get', 'logger', 'top_snackbar_flutter', 'fluttertoast',
       'http', 'loading_animation_widget', 'get_storage', 'pinput',
     ];
-    print('    ' + deps.map(cyan).join(gray('  ·  ')));
+    print('    ${deps.map(cyan).join(gray('  ·  '))}');
     print('');
   }
 
   void _printVersion() {
     _printEnvStatus();
-    print(white('  STA CLI ') + cyan('v0.1.5'));
+    print('${white('  STA CLI ')}${cyan('v0.1.5')}');
     print(gray('  Flutter project scaffolding CLI — built with Dart'));
     print('');
   }

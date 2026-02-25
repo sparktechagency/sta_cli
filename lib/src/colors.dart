@@ -53,5 +53,5 @@ void printWarning(String message) {
 }
 
 void printDivider() {
-  print(gray('  ' + '─' * 50));
+  print(gray('  ${'─' * 50}'));
 }

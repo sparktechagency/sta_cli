@@ -116,9 +116,17 @@ class CliRunner {
   }
 
   Future<FlutterInfo> _detectFlutter() async {
-    // FIX 1: `flutter --version --machine` writes JSON to STDERR, not stdout.
-    // Capture stderr for the machine-readable attempt.
-    var result = await _runCommandFull('flutter --version --machine');
+    // Try system flutter first, then fvm flutter as fallback
+    for (final flutterCmd in ['flutter', 'fvm flutter']) {
+      final info = await _tryDetectFlutter(flutterCmd);
+      if (info.available) return info;
+    }
+    return const FlutterInfo(available: false);
+  }
+
+  Future<FlutterInfo> _tryDetectFlutter(String flutterCmd) async {
+    // Try `flutter --version --machine` first (JSON output)
+    var result = await _runCommandFull('$flutterCmd --version --machine');
     final machineOut = result.stderr.trim().isNotEmpty
         ? result.stderr
         : result.stdout; // some versions may write to stdout
@@ -137,25 +145,23 @@ class CliRunner {
           available: true,
           version: versionMatch.group(1) ?? 'unknown',
           channel: channelMatch?.group(1) ?? 'unknown',
-          // FIX 2: dartSdkVersion may look like "3.3.0 (build 3.3.0)" — take first token
           dartVersion: (dartMatch?.group(1) ?? 'unknown').split(' ').first,
-          path: pathResult,
+          path: flutterCmd == 'flutter' ? pathResult : '(via FVM)',
         );
       }
     }
 
-    // Fallback: plain text `flutter --version` (writes to stdout)
-    result = await _runCommandFull('flutter --version');
+    // Fallback: plain text `flutter --version`
+    result = await _runCommandFull('$flutterCmd --version');
     if (result.exitCode != 0 ||
         (result.stdout.trim().isEmpty && result.stderr.trim().isEmpty)) {
       return const FlutterInfo(available: false);
     }
 
-    // Combine stdout+stderr for plain-text parsing (some versions mix them)
+    // Combine stdout+stderr for plain-text parsing
     final out = '${result.stdout}\n${result.stderr}';
     final versionMatch = RegExp(r'Flutter\s+(\d+\.\d+\.\d+\S*)').firstMatch(out);
     final channelMatch = RegExp(r'channel\s+(\S+)').firstMatch(out);
-    // FIX 3: Dart version line looks like "Dart SDK version: 3.x.x ..."
     final dartMatch =
     RegExp(r'Dart(?:\s+SDK(?:\s+version)?)?\s+(\d+\.\d+\.\d+\S*)').firstMatch(out);
     final pathResult = await _resolveExecutablePath('flutter');
@@ -165,7 +171,7 @@ class CliRunner {
       version: versionMatch?.group(1) ?? 'unknown',
       channel: channelMatch?.group(1) ?? 'unknown',
       dartVersion: dartMatch?.group(1) ?? 'unknown',
-      path: pathResult,
+      path: flutterCmd == 'flutter' ? pathResult : '(via FVM)',
     );
   }
 
@@ -218,6 +224,7 @@ class CliRunner {
             trimmed.contains('✔') ||
             trimmed.startsWith('→') ||
             trimmed.startsWith('▶') ||
+            trimmed.contains('●') ||  // FVM 4.x uses bullet in Local/Global column
             RegExp(r'\bactive\b', caseSensitive: false).hasMatch(trimmed) ||
             trimmed.contains('(active)') ||
             trimmed.contains('* ');
@@ -633,8 +640,10 @@ class CliRunner {
     if (runnerInfo.isFvm) {
       print('');
       print(cyan('  ● Pinning FVM version ${runnerInfo.version}...'));
-      await _runCommandLive(
-          'cd "$projectPath" && fvm use ${runnerInfo.version} --force');
+      final fvmCmd = Platform.isWindows
+          ? 'cd /d "$projectPath" && fvm use ${runnerInfo.version} --force'
+          : 'cd "$projectPath" && fvm use ${runnerInfo.version} --force';
+      await _runCommandLive(fvmCmd);
       printSuccess('.fvmrc created in project root');
     }
 
@@ -656,9 +665,10 @@ class CliRunner {
 
     print('');
     print(cyan('  ● Running pub get...'));
-    final pubResult = await _runCommandLive(
-      'cd "$projectPath" && ${runnerInfo.command} pub get',
-    );
+    final pubCmd = Platform.isWindows
+        ? 'cd /d "$projectPath" && ${runnerInfo.command} pub get'
+        : 'cd "$projectPath" && ${runnerInfo.command} pub get';
+    final pubResult = await _runCommandLive(pubCmd);
     if (pubResult == 0) {
       printSuccess('All packages installed!');
     } else {
@@ -698,24 +708,38 @@ class CliRunner {
   /// Run a command and capture both stdout and stderr separately.
   Future<({int exitCode, String stdout, String stderr})> _runCommandFull(
       String cmd) async {
-    final r = await Process.run(
-      'bash',
-      ['-c', cmd],
-      runInShell: true,
-    );
+    final ProcessResult r;
+    if (Platform.isWindows) {
+      r = await Process.run(
+        'cmd',
+        ['/c', cmd],
+        runInShell: true,
+      );
+    } else {
+      r = await Process.run(
+        'bash',
+        ['-c', cmd],
+        runInShell: true,
+      );
+    }
     return (
-    exitCode: r.exitCode,
-    stdout: r.stdout.toString(),
-    stderr: r.stderr.toString(),
+      exitCode: r.exitCode,
+      stdout: r.stdout.toString(),
+      stderr: r.stderr.toString(),
     );
   }
 
   /// Resolve the full path of an executable using `which` (Unix) or
   /// `where` (Windows), with a graceful fallback.
   Future<String> _resolveExecutablePath(String executable) async {
-    // Try `which` first (macOS/Linux), then `where` (Windows)
-    for (final cmd in ['which $executable', 'where $executable']) {
-      final r = await Process.run('bash', ['-c', cmd], runInShell: true);
+    if (Platform.isWindows) {
+      final r = await Process.run('where', [executable], runInShell: true);
+      final out = r.stdout.toString().trim();
+      if (r.exitCode == 0 && out.isNotEmpty) {
+        return out.split('\n').first.trim();
+      }
+    } else {
+      final r = await Process.run('which', [executable], runInShell: true);
       final out = r.stdout.toString().trim();
       if (r.exitCode == 0 && out.isNotEmpty) {
         return out.split('\n').first.trim();
@@ -725,8 +749,12 @@ class CliRunner {
   }
 
   Future<int> _runCommandLive(String cmd) async {
-    final proc =
-    await Process.start('bash', ['-c', cmd], runInShell: true);
+    final Process proc;
+    if (Platform.isWindows) {
+      proc = await Process.start('cmd', ['/c', cmd], runInShell: true);
+    } else {
+      proc = await Process.start('bash', ['-c', cmd], runInShell: true);
+    }
     proc.stdout.listen((d) => stdout.add(d));
     proc.stderr.listen((d) => stderr.add(d));
     return await proc.exitCode;

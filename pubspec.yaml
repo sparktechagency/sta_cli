@@ -17,8 +17,7 @@ dev_dependencies:
   lints: ^6.1.0
 
 executables:
-  sta: sta
+  sta:
 
-  repository: https://github.com/mdnahidhossen1911/sta_cli
-  issue_tracker: https://github.com/mdnahidhossen1911/sta_cli/issues
-  homepage: https://github.com/mdnahidhossen1911/sta_cli
+repository: https://github.com/mdnahidhossen1911/sta_cli
+issue_tracker: https://github.com/mdnahidhossen1911/sta_cli/issues

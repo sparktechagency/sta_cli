@@ -6,6 +6,13 @@
 
 ---
 
+███████╗████████╗ █████╗      ██████╗██╗     ██╗
+██╔════╝╚══██╔══╝██╔══██╗    ██╔════╝██║     ██║
+███████╗   ██║   ███████║    ██║     ██║     ██║
+╚════██║   ██║   ██╔══██║    ██║     ██║     ██║
+███████║   ██║   ██║  ██║    ╚██████╗███████╗██║
+╚══════╝   ╚═╝   ╚═╝  ╚═╝     ╚═════╝╚══════╝╚═╝
+
 ## ✨ What It Generates
 
 | Feature | Details |
@@ -34,61 +41,12 @@ pinput: ^5.0.0
 
 ## 📦 Installation
 
-### Option 1 — Activate globally (Recommended)
+### Activate globally (Recommended)
 
-**macOS / Linux:**
+**macOS / Linux / Windows:**
 ```bash
-dart pub global activate --source path /path/to/sta_cli
+dart pub global activate sta_cli
 ```
-
-**Windows (PowerShell):**
-```powershell
-dart pub global activate --source path C:\path\to\sta_cli
-```
-
-Then use from anywhere:
-```bash
-sta create
-sta create my_app
-sta doctor
-```
-
-### Option 2 — Run directly with Dart
-
-**macOS / Linux:**
-```bash
-cd sta_cli
-dart pub get
-dart run bin/sta.dart create
-```
-
-**Windows (PowerShell):**
-```powershell
-cd sta_cli
-dart pub get
-dart run bin/sta.dart create
-```
-
-### Option 3 — Compile to native executable
-
-**macOS / Linux:**
-```bash
-cd sta_cli
-dart pub get
-dart compile exe bin/sta.dart -o sta
-# Move to your PATH:
-sudo mv sta /usr/local/bin/sta
-```
-
-**Windows (PowerShell):**
-```powershell
-cd sta_cli
-dart pub get
-dart compile exe bin/sta.dart -o sta.exe
-# Move sta.exe to a folder in your PATH
-```
-
----
 
 ## 🎯 Usage
 
@@ -266,22 +224,6 @@ STA CLI now automatically suggests alternative names (e.g., `my_app_1`, `my_app_
 - ✅ Added auto-increment folder naming (name_1, name_2, etc.) when folder exists
 - ✅ Improved `pubspec.yaml` updating - properly handles existing dependencies
 - ✅ Added helpful troubleshooting messages for common errors
-
-### 0.1.3
-- 🐛 Fixed Windows path quoting issue (`FileSystemException` errno 123)
-- 🐛 Fixed "flutter is not recognized" detection with better error messages
-- ✅ Added auto-increment folder naming (name_1, name_2, etc.) when folder exists
-- ✅ Improved `pubspec.yaml` updating - properly handles existing dependencies
-- ✅ Added helpful troubleshooting messages for common errors
-
-### 0.1.2
-- ✅ Full Windows compatibility
-- ✅ Fixed CLI detection for FVM-managed Flutter
-- ✅ Added `sta doctor` command
-- ✅ Improved FVM 4.x version detection
-
-### 0.1.1
-- Initial release
 
 ---
 

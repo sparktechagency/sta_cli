@@ -238,6 +238,11 @@ your_project/
 
 ## 📝 Changelog
 
+### 0.1.3
+- 🐛 Fixed Windows path quoting issue (`FileSystemException` errno 123)
+- ✅ Added auto-increment folder naming (name_1, name_2, etc.)
+- ✅ Improved directory existence handling
+
 ### 0.1.2
 - ✅ Full Windows compatibility
 - ✅ Fixed CLI detection for FVM-managed Flutter

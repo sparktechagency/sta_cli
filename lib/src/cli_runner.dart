@@ -418,7 +418,7 @@ class CliRunner {
     printStep(2, 4, 'Project Details');
     printDivider();
 
-    String projectName = args.isNotEmpty ? args[0] : '';
+    var projectName = args.isNotEmpty ? args[0] : '';
     if (projectName.isEmpty) {
       projectName = prompt('Project name (snake_case)', defaultValue: 'my_app');
     }
@@ -443,18 +443,30 @@ class CliRunner {
     printStep(3, 4, 'Project Location');
     printDivider();
     final basePath = await _selectLocation();
-    final projectPath = p.join(basePath, projectName);
-    printInfo('Full path: ${blue(projectPath)}');
+    var projectPath = p.join(basePath, projectName);
 
+    // Auto-increment folder name if it already exists
     if (await Directory(projectPath).exists()) {
       print('');
-      printWarning('Directory already exists.');
-      final overwrite = confirm('Overwrite?', defaultYes: false);
+      printWarning('Directory "$projectName" already exists.');
+      final overwrite = confirm('Overwrite existing directory?', defaultYes: false);
       if (!overwrite) {
-        printInfo('Aborted.');
-        exit(0);
+        // Find next available name with suffix _1, _2, etc.
+        var counter = 1;
+        var newName = '${projectName}_$counter';
+        var newPath = p.join(basePath, newName);
+        while (await Directory(newPath).exists()) {
+          counter++;
+          newName = '${projectName}_$counter';
+          newPath = p.join(basePath, newName);
+        }
+        projectName = newName;
+        projectPath = newPath;
+        printInfo('Using alternative name: ${green(projectName)}');
       }
     }
+
+    printInfo('Full path: ${blue(projectPath)}');
     print('');
 
     printStep(4, 4, 'Confirm & Create');
@@ -635,8 +647,9 @@ class CliRunner {
     required String orgName,
   }) async {
     print(cyan('  ● Running ${runnerInfo.command} create...'));
+    // Don't use quotes around path - pass it directly
     final createCmd =
-        '${runnerInfo.command} create --org $orgName --project-name $projectName "$projectPath"';
+        '${runnerInfo.command} create --org $orgName --project-name $projectName $projectPath';
     final createResult = await _runCommandLive(createCmd);
     if (createResult != 0) {
       printError('flutter create failed. See output above.');
@@ -648,7 +661,7 @@ class CliRunner {
       print('');
       print(cyan('  ● Pinning FVM version ${runnerInfo.version}...'));
       final fvmCmd = Platform.isWindows
-          ? 'cd /d "$projectPath" && fvm use ${runnerInfo.version} --force'
+          ? 'cd /d $projectPath && fvm use ${runnerInfo.version} --force'
           : 'cd "$projectPath" && fvm use ${runnerInfo.version} --force';
       await _runCommandLive(fvmCmd);
       printSuccess('.fvmrc created in project root');
@@ -673,7 +686,7 @@ class CliRunner {
     print('');
     print(cyan('  ● Running pub get...'));
     final pubCmd = Platform.isWindows
-        ? 'cd /d "$projectPath" && ${runnerInfo.command} pub get'
+        ? 'cd /d $projectPath && ${runnerInfo.command} pub get'
         : 'cd "$projectPath" && ${runnerInfo.command} pub get';
     final pubResult = await _runCommandLive(pubCmd);
     if (pubResult == 0) {

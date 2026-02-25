@@ -1,4 +1,10 @@
-## 0.1.1
+## 0.1.3
+
+- Fixed Windows path quoting issue causing `FileSystemException` (errno 123)
+- Added auto-increment folder naming when directory already exists (name_1, name_2, etc.)
+- Improved directory existence handling with overwrite confirmation
+
+## 0.1.2
 
 - Fixed Windows compatibility for CLI detection
 - Fixed command execution to use `cmd.exe` on Windows instead of `bash`

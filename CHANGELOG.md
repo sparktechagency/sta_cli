@@ -1,3 +1,11 @@
+## 0.1.4
+
+- 🐛 Fixed Windows path quoting issue (`FileSystemException` errno 123) - paths are now properly cleaned and escaped
+- 🐛 Added better error messages when Flutter is not found in PATH
+- ✅ Improved `pubspec.yaml` updating - properly handles and overwrites existing dependencies
+- ✅ Added dependencies: get, logger, top_snackbar_flutter, fluttertoast, http, loading_animation_widget, get_storage, pinput
+- ✅ Added troubleshooting section in README
+
 ## 0.1.3
 
 - Fixed Windows path quoting issue causing `FileSystemException` (errno 123)

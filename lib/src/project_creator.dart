@@ -54,7 +54,7 @@ class ProjectCreator {
     final pkg = packageName;
     return {
       // ── main.dart ──────────────────────────────────────────────────────
-      'lib/sta.dart': '''import 'package:flutter/material.dart';
+      'lib/main.dart': '''import 'package:flutter/material.dart';
 import 'package:get_storage/get_storage.dart';
 
 import 'app.dart';
@@ -1431,41 +1431,94 @@ class HomeView extends StatelessWidget {
 
     String content = await file.readAsString();
 
-    // Add flutter_lints if not present, and add our dependencies
-    const depsToAdd = '''  get: ^4.6.6
-  logger: ^2.4.0
-  top_snackbar_flutter: ^3.1.0
-  fluttertoast: ^8.2.8
-  http: ^1.2.1
-  loading_animation_widget: ^1.2.1
-  get_storage: ^2.1.1
-  pinput: ^5.0.0''';
+    // Dependencies to add
+    final depsToAdd = {
+      'get': '^4.6.6',
+      'logger': '^2.4.0',
+      'top_snackbar_flutter': '^3.1.0',
+      'fluttertoast': '^8.2.8',
+      'http': '^1.2.1',
+      'loading_animation_widget': '^1.2.1',
+      'get_storage': '^2.1.1',
+      'pinput': '^5.0.0',
+    };
 
-    // Insert after "dependencies:" line (after sdk: flutter)
-    if (content.contains('  flutter:\n    sdk: flutter')) {
-      content = content.replaceFirst(
-        '  flutter:\n    sdk: flutter',
-        '  flutter:\n    sdk: flutter\n$depsToAdd',
-      );
-    } else {
-      // fallback: append after "dependencies:"
-      content = content.replaceFirst(
-        'dependencies:\n',
-        'dependencies:\n$depsToAdd\n',
-      );
+    // Build dependencies string
+    final depsString = depsToAdd.entries
+        .map((e) => '  ${e.key}: ${e.value}')
+        .join('\n');
+
+    // Check if dependencies already exist and skip those
+    final lines = content.split('\n');
+    final newLines = <String>[];
+    bool inDependencies = false;
+    bool addedDeps = false;
+
+    for (int i = 0; i < lines.length; i++) {
+      final line = lines[i];
+
+      // Track when we enter dependencies section
+      if (line.trim() == 'dependencies:') {
+        inDependencies = true;
+        newLines.add(line);
+        continue;
+      }
+
+      // When we hit flutter sdk in dependencies, add our deps after
+      if (inDependencies && line.contains('sdk: flutter') && !addedDeps) {
+        newLines.add(line);
+        // Add dependencies after flutter sdk line
+        newLines.add(depsString);
+        addedDeps = true;
+        continue;
+      }
+
+      // Check if we're leaving dependencies section (new section starts)
+      if (inDependencies && !line.startsWith(' ') && !line.startsWith('\t') && line.trim().isNotEmpty && line.trim() != '') {
+        inDependencies = false;
+      }
+
+      // Skip if this line is one of our dependencies that's already there
+      bool skip = false;
+      if (inDependencies) {
+        for (final dep in depsToAdd.keys) {
+          if (line.trim().startsWith('$dep:')) {
+            skip = true;
+            break;
+          }
+        }
+      }
+
+      if (!skip) {
+        newLines.add(line);
+      }
     }
+
+    content = newLines.join('\n');
 
     // Add assets section if not present
     if (!content.contains('assets:')) {
-      content = content.replaceFirst(
-        '  uses-material-design: true',
-        '''  uses-material-design: true
+      if (content.contains('uses-material-design: true')) {
+        content = content.replaceFirst(
+          'uses-material-design: true',
+          '''uses-material-design: true
+
+  assets:
+    - assets/images/
+    - assets/icons/''',
+        );
+      } else {
+        // Add flutter section with assets at the end if it doesn't exist
+        content += '''
+
+flutter:
+  uses-material-design: true
 
   assets:
     - assets/images/
     - assets/icons/
-''',
-      );
+''';
+      }
     }
 
     await file.writeAsString(content);

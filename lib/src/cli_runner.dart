@@ -389,7 +389,7 @@ class CliRunner {
 
   void _printVersion() {
     _printEnvStatus();
-    print(white('  STA CLI ') + cyan('v1.0.0'));
+    print(white('  STA CLI ') + cyan('v0.1.4'));
     print(gray('  Flutter project scaffolding CLI — built with Dart'));
     print('');
   }
@@ -647,12 +647,22 @@ class CliRunner {
     required String orgName,
   }) async {
     print(cyan('  ● Running ${runnerInfo.command} create...'));
-    // Don't use quotes around path - pass it directly
+
+    // Ensure project path doesn't have trailing/leading quotes
+    final cleanPath = projectPath.replaceAll('"', '').replaceAll("'", '');
+
+    // On Windows, use proper escaping for paths with spaces
+    final pathArg = Platform.isWindows && cleanPath.contains(' ')
+        ? '"$cleanPath"'
+        : cleanPath;
+
     final createCmd =
-        '${runnerInfo.command} create --org $orgName --project-name $projectName $projectPath';
+        '${runnerInfo.command} create --org $orgName --project-name $projectName $pathArg';
     final createResult = await _runCommandLive(createCmd);
     if (createResult != 0) {
       printError('flutter create failed. See output above.');
+      printInfo('Make sure Flutter is properly installed and in your PATH.');
+      printInfo('Run "flutter doctor" to check your setup.');
       exit(1);
     }
     printSuccess('Flutter project scaffolded!');
@@ -661,8 +671,8 @@ class CliRunner {
       print('');
       print(cyan('  ● Pinning FVM version ${runnerInfo.version}...'));
       final fvmCmd = Platform.isWindows
-          ? 'cd /d $projectPath && fvm use ${runnerInfo.version} --force'
-          : 'cd "$projectPath" && fvm use ${runnerInfo.version} --force';
+          ? 'cd /d "$cleanPath" && fvm use ${runnerInfo.version} --force'
+          : 'cd "$cleanPath" && fvm use ${runnerInfo.version} --force';
       await _runCommandLive(fvmCmd);
       printSuccess('.fvmrc created in project root');
     }
@@ -671,7 +681,7 @@ class CliRunner {
     print(cyan('  ● Writing MVC structure & source files...'));
     final creator = ProjectCreator(
       projectName: projectName,
-      projectPath: projectPath,
+      projectPath: cleanPath,
       packageName: packageName,
     );
     await creator.createStructure();
@@ -686,8 +696,8 @@ class CliRunner {
     print('');
     print(cyan('  ● Running pub get...'));
     final pubCmd = Platform.isWindows
-        ? 'cd /d $projectPath && ${runnerInfo.command} pub get'
-        : 'cd "$projectPath" && ${runnerInfo.command} pub get';
+        ? 'cd /d "$cleanPath" && ${runnerInfo.command} pub get'
+        : 'cd "$cleanPath" && ${runnerInfo.command} pub get';
     final pubResult = await _runCommandLive(pubCmd);
     if (pubResult == 0) {
       printSuccess('All packages installed!');
@@ -697,7 +707,7 @@ class CliRunner {
     }
 
     print('');
-    _printComplete(projectName, projectPath, runnerInfo);
+    _printComplete(projectName, cleanPath, runnerInfo);
   }
 
   void _printComplete(String name, String path, _RunnerInfo runner) {

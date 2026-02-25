@@ -2,7 +2,7 @@
 
 **STA CLI** is a Dart-based command-line tool to scaffold Flutter projects with a clean **MVC architecture** powered by GetX.
 
-> **Version 0.1.1** — Now with full Windows support!
+> **Version 0.1.4** — Now with full Windows support!
 
 ---
 
@@ -236,12 +236,43 @@ your_project/
 
 ---
 
+## 🔧 Troubleshooting
+
+### "flutter is not recognized as an internal or external command"
+
+This error means Flutter is not in your system PATH. To fix:
+
+1. **Install Flutter** from [flutter.dev](https://flutter.dev/docs/get-started/install)
+2. **Add Flutter to PATH:**
+   - **Windows:** Add `C:\path\to\flutter\bin` to your system PATH
+   - **macOS/Linux:** Add `export PATH="$PATH:/path/to/flutter/bin"` to `~/.bashrc` or `~/.zshrc`
+3. **Or use FVM:** Install [FVM](https://fvm.app/) and STA CLI will detect it automatically
+
+### "FileSystemException: Exists failed, path = '...' (errno = 123)"
+
+This was caused by incorrect path quoting on Windows. **Fixed in v0.1.3.**
+
+### Folder already exists
+
+STA CLI now automatically suggests alternative names (e.g., `my_app_1`, `my_app_2`) when a folder already exists. You can also choose to overwrite the existing folder.
+
+---
+
 ## 📝 Changelog
+
+### 0.1.4
+- 🐛 Fixed Windows path quoting issue (`FileSystemException` errno 123)
+- 🐛 Fixed "flutter is not recognized" detection with better error messages
+- ✅ Added auto-increment folder naming (name_1, name_2, etc.) when folder exists
+- ✅ Improved `pubspec.yaml` updating - properly handles existing dependencies
+- ✅ Added helpful troubleshooting messages for common errors
 
 ### 0.1.3
 - 🐛 Fixed Windows path quoting issue (`FileSystemException` errno 123)
-- ✅ Added auto-increment folder naming (name_1, name_2, etc.)
-- ✅ Improved directory existence handling
+- 🐛 Fixed "flutter is not recognized" detection with better error messages
+- ✅ Added auto-increment folder naming (name_1, name_2, etc.) when folder exists
+- ✅ Improved `pubspec.yaml` updating - properly handles existing dependencies
+- ✅ Added helpful troubleshooting messages for common errors
 
 ### 0.1.2
 - ✅ Full Windows compatibility

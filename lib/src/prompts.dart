@@ -5,7 +5,9 @@ import 'colors.dart';
 String prompt(String question, {String? defaultValue}) {
   final defStr = defaultValue != null ? gray(' (${defaultValue})') : '';
   stdout.write('  ${cyan('?')} $question$defStr: ');
-  final input = stdin.readLineSync()?.trim() ?? '';
+  var input = stdin.readLineSync()?.trim() ?? '';
+  // Remove any surrounding quotes that might be pasted from file explorer
+  input = input.replaceAll('"', '').replaceAll("'", '');
   return input.isEmpty && defaultValue != null ? defaultValue : input;
 }
 

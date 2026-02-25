@@ -2,7 +2,7 @@
 
 **STA CLI** is a Dart-based command-line tool to scaffold Flutter projects with a clean **MVC architecture** powered by GetX.
 
-> **Version 0.1.4** — Now with full Windows support!
+> **Version 0.1.5** — Now with Android/iOS package name configuration!
 
 ---
 
@@ -27,18 +27,21 @@
 | **UI** | Shared widgets, theming, OTP field |
 | **Auth Flow** | Splash → Sign In → Sign Up → Home |
 | **Structure** | controller / model / repository / view / shared / core |
+| **Platform Config** | Auto-configured Android & iOS package names |
+| **Assets** | Pre-configured images, icons, and fonts folders |
 
 ### Pre-installed Dependencies
 ```yaml
-get: ^4.6.6
-logger: ^2.4.0
-top_snackbar_flutter: ^3.1.0
-fluttertoast: ^8.2.8
-http: ^1.2.1
-loading_animation_widget: ^1.2.1
-get_storage: ^2.1.1
-pinput: ^5.0.0
+get:
+logger:
+top_snackbar_flutter:
+fluttertoast:
+http:
+loading_animation_widget:
+get_storage:
+pinput:
 ```
+> Dependencies use the latest versions (no version pinning)
 
 ---
 
@@ -115,8 +118,10 @@ Review the summary, then STA CLI:
 2. Sets up FVM version in project (if selected)
 3. Creates the full MVC folder structure
 4. Writes all boilerplate source files
-5. Updates `pubspec.yaml` with all dependencies
-6. Runs `flutter pub get`
+5. **Updates Android package name** (build.gradle, AndroidManifest.xml, Kotlin files)
+6. **Updates iOS bundle identifier** (project.pbxproj)
+7. Updates `pubspec.yaml` with all dependencies and assets configuration
+8. Runs `flutter pub get`
 
 ---
 
@@ -184,7 +189,19 @@ your_project/
 │           └── home_view.dart
 └── assets/
     ├── images/
-    └── icons/
+    ├── icons/
+    └── fonts/
+```
+
+### Auto-configured pubspec.yaml Assets
+```yaml
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+    - assets/icons/
+    - assets/fonts/
 ```
 
 ---
@@ -220,6 +237,13 @@ STA CLI now automatically suggests alternative names (e.g., `my_app_1`, `my_app_
 ---
 
 ## 📝 Changelog
+
+### 0.1.5
+- ✅ **Android package name configuration** - Updates build.gradle, AndroidManifest.xml, and Kotlin files
+- ✅ **iOS bundle identifier configuration** - Updates project.pbxproj
+- ✅ **Assets folder setup** - Pre-configured images, icons, and fonts folders
+- ✅ Dependencies now use latest versions (no version pinning)
+- ✅ Added fonts folder to assets
 
 ### 0.1.4
 - 🐛 Fixed Windows path quoting issue (`FileSystemException` errno 123)

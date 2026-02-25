@@ -33,6 +33,7 @@ class ProjectCreator {
       'lib/view/home',
       'assets/images',
       'assets/icons',
+      'assets/fonts',
     ];
 
     for (final dir in dirs) {
@@ -1434,19 +1435,19 @@ class HomeView extends StatelessWidget {
 
     // Dependencies to add
     final depsToAdd = {
-      'get': '^4.6.6',
-      'logger': '^2.4.0',
-      'top_snackbar_flutter': '^3.1.0',
-      'fluttertoast': '^8.2.8',
-      'http': '^1.2.1',
-      'loading_animation_widget': '^1.2.1',
-      'get_storage': '^2.1.1',
-      'pinput': '^5.0.0',
+      'get': null,
+      'logger': null,
+      'top_snackbar_flutter': null,
+      'fluttertoast': null,
+      'http': null,
+      'loading_animation_widget': null,
+      'get_storage': null,
+      'pinput': null,
     };
 
-    // Build dependencies string
+    // Build dependencies string (null means latest version, no version constraint)
     final depsString = depsToAdd.entries
-        .map((e) => '  ${e.key}: ${e.value}')
+        .map((e) => e.value == null ? '  ${e.key}:' : '  ${e.key}: ${e.value}')
         .join('\n');
 
     // Check if dependencies already exist and skip those
@@ -1506,7 +1507,8 @@ class HomeView extends StatelessWidget {
 
   assets:
     - assets/images/
-    - assets/icons/''',
+    - assets/icons/
+    - assets/fonts/''',
         );
       } else {
         // Add flutter section with assets at the end if it doesn't exist
@@ -1518,10 +1520,162 @@ flutter:
   assets:
     - assets/images/
     - assets/icons/
+    - assets/fonts/
 ''';
       }
     }
 
     await file.writeAsString(content);
+  }
+
+  /// Updates the Android package name in build.gradle and AndroidManifest.xml
+  Future<void> updateAndroidPackageName() async {
+    // Update android/app/build.gradle
+    final buildGradlePath = p.join(projectPath, 'android', 'app', 'build.gradle');
+    final buildGradleFile = File(buildGradlePath);
+    if (await buildGradleFile.exists()) {
+      String content = await buildGradleFile.readAsString();
+      // Update namespace
+      content = content.replaceAllMapped(
+        RegExp(r'namespace\s*=?\s*"[^"]+"'),
+        (match) => 'namespace = "$packageName"',
+      );
+      // Update applicationId
+      content = content.replaceAllMapped(
+        RegExp(r'applicationId\s*=?\s*"[^"]+"'),
+        (match) => 'applicationId = "$packageName"',
+      );
+      await buildGradleFile.writeAsString(content);
+      printSuccess('Updated Android build.gradle');
+    }
+
+    // Update AndroidManifest.xml (main)
+    final manifestPath = p.join(projectPath, 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
+    final manifestFile = File(manifestPath);
+    if (await manifestFile.exists()) {
+      String content = await manifestFile.readAsString();
+      content = content.replaceAllMapped(
+        RegExp(r'package\s*=\s*"([^"]+)"'),
+        (match) => 'package="$packageName"',
+      );
+      await manifestFile.writeAsString(content);
+      printSuccess('Updated Android AndroidManifest.xml');
+    }
+
+    // Update debug AndroidManifest.xml
+    final debugManifestPath = p.join(projectPath, 'android', 'app', 'src', 'debug', 'AndroidManifest.xml');
+    final debugManifestFile = File(debugManifestPath);
+    if (await debugManifestFile.exists()) {
+      String content = await debugManifestFile.readAsString();
+      content = content.replaceAllMapped(
+        RegExp(r'package\s*=\s*"([^"]+)"'),
+        (match) => 'package="$packageName"',
+      );
+      await debugManifestFile.writeAsString(content);
+    }
+
+    // Update profile AndroidManifest.xml
+    final profileManifestPath = p.join(projectPath, 'android', 'app', 'src', 'profile', 'AndroidManifest.xml');
+    final profileManifestFile = File(profileManifestPath);
+    if (await profileManifestFile.exists()) {
+      String content = await profileManifestFile.readAsString();
+      content = content.replaceAllMapped(
+        RegExp(r'package\s*=\s*"([^"]+)"'),
+        (match) => 'package="$packageName"',
+      );
+      await profileManifestFile.writeAsString(content);
+    }
+
+    // Update Kotlin MainActivity package
+    await _updateKotlinPackage();
+  }
+
+  /// Updates Kotlin source files with new package name
+  Future<void> _updateKotlinPackage() async {
+    final parts = packageName.split('.');
+    final kotlinPath = p.join(projectPath, 'android', 'app', 'src', 'main', 'kotlin');
+
+    // Find existing MainActivity.kt
+    final mainActivityFiles = await _findFiles(kotlinPath, 'MainActivity.kt');
+
+    for (final file in mainActivityFiles) {
+      String content = await file.readAsString();
+      content = content.replaceAllMapped(
+        RegExp(r'package\s+[\w.]+'),
+        (match) => 'package $packageName',
+      );
+
+      // Create new directory structure based on package name
+      final newDir = p.join(kotlinPath, parts.join(Platform.pathSeparator));
+      await Directory(newDir).create(recursive: true);
+
+      final newFilePath = p.join(newDir, 'MainActivity.kt');
+      await File(newFilePath).writeAsString(content);
+
+      // Remove old file if it's different
+      if (file.path != newFilePath) {
+        try {
+          await file.delete();
+          // Clean up empty directories
+          var parent = file.parent;
+          while (parent.path != kotlinPath) {
+            if (await parent.list().isEmpty) {
+              await parent.delete();
+            }
+            parent = parent.parent;
+          }
+        } catch (_) {}
+      }
+    }
+  }
+
+  /// Updates the iOS bundle identifier
+  Future<void> updateIOSBundleIdentifier() async {
+    // Update iOS project.pbxproj
+    final pbxprojPath = p.join(projectPath, 'ios', 'Runner.xcodeproj', 'project.pbxproj');
+    final pbxprojFile = File(pbxprojPath);
+    if (await pbxprojFile.exists()) {
+      String content = await pbxprojFile.readAsString();
+      content = content.replaceAllMapped(
+        RegExp(r'PRODUCT_BUNDLE_IDENTIFIER\s*=\s*([^;]+);'),
+        (match) => 'PRODUCT_BUNDLE_IDENTIFIER = $packageName;',
+      );
+      await pbxprojFile.writeAsString(content);
+      printSuccess('Updated iOS project.pbxproj');
+    }
+
+    // Update Info.plist if it has CFBundleIdentifier
+    final infoPlistPath = p.join(projectPath, 'ios', 'Runner', 'Info.plist');
+    final infoPlistFile = File(infoPlistPath);
+    if (await infoPlistFile.exists()) {
+      String content = await infoPlistFile.readAsString();
+      // Update CFBundleIdentifier if it exists with a hardcoded value
+      content = content.replaceAllMapped(
+        RegExp(r'<key>CFBundleIdentifier</key>\s*<string>([^<]+)</string>'),
+        (match) {
+          final value = match.group(1)!;
+          // Keep $(PRODUCT_BUNDLE_IDENTIFIER) if that's what's there
+          if (value.contains('\$(PRODUCT_BUNDLE_IDENTIFIER)')) {
+            return match.group(0)!;
+          }
+          return '<key>CFBundleIdentifier</key>\n\t<string>$packageName</string>';
+        },
+      );
+      await infoPlistFile.writeAsString(content);
+    }
+  }
+
+  /// Helper to find files recursively
+  Future<List<File>> _findFiles(String dirPath, String fileName) async {
+    final dir = Directory(dirPath);
+    final files = <File>[];
+    if (!await dir.exists()) return files;
+
+    await for (final entity in dir.list(recursive: true)) {
+      if (entity is File && p.basename(entity.path) == fileName) {
+        files.add(entity);
+      }
+    }
+    return files;
   }
 }

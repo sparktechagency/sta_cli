@@ -1,3 +1,11 @@
+## 0.1.5
+
+- ✅ **Android package name configuration** - Auto-updates build.gradle, AndroidManifest.xml, and Kotlin files with correct package name
+- ✅ **iOS bundle identifier configuration** - Auto-updates project.pbxproj with correct bundle identifier
+- ✅ **Assets folder setup** - Pre-configured assets/images, assets/icons, and assets/fonts folders
+- ✅ Dependencies now use latest versions (no version pinning)
+- ✅ Improved pubspec.yaml with proper assets configuration
+
 ## 0.1.4
 
 - 🐛 Fixed Windows path quoting issue (`FileSystemException` errno 123) - paths are now properly cleaned and escaped

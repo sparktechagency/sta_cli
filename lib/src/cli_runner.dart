@@ -389,7 +389,7 @@ class CliRunner {
 
   void _printVersion() {
     _printEnvStatus();
-    print(white('  STA CLI ') + cyan('v0.1.4'));
+    print(white('  STA CLI ') + cyan('v0.1.5'));
     print(gray('  Flutter project scaffolding CLI — built with Dart'));
     print('');
   }
@@ -442,7 +442,9 @@ class CliRunner {
 
     printStep(3, 4, 'Project Location');
     printDivider();
-    final basePath = await _selectLocation();
+    var basePath = await _selectLocation();
+    // Clean any quotes from the path
+    basePath = basePath.replaceAll('"', '').replaceAll("'", '');
     var projectPath = p.join(basePath, projectName);
 
     // Auto-increment folder name if it already exists
@@ -687,6 +689,16 @@ class CliRunner {
     await creator.createStructure();
     await creator.writeAllFiles();
     printSuccess('Source files written!');
+
+    print('');
+    print(cyan('  ● Updating Android package name...'));
+    await creator.updateAndroidPackageName();
+    printSuccess('Android package name updated!');
+
+    print('');
+    print(cyan('  ● Updating iOS bundle identifier...'));
+    await creator.updateIOSBundleIdentifier();
+    printSuccess('iOS bundle identifier updated!');
 
     print('');
     print(cyan('  ● Updating pubspec.yaml...'));

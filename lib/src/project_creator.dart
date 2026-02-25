@@ -51,7 +51,7 @@ class ProjectCreator {
   }
 
   Map<String, String> _buildFileMap() {
-    final pkg = packageName;
+    final projectPath = projectName;
     return {
       // ── main.dart ──────────────────────────────────────────────────────
       'lib/main.dart': '''import 'package:flutter/material.dart';
@@ -69,8 +69,8 @@ Future<void> main() async {
       // ── app.dart ───────────────────────────────────────────────────────
       'lib/app.dart': '''import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:$pkg/core/dependency/controller_binder.dart';
-import 'package:$pkg/core/router/app_router.dart';
+import 'package:$projectPath/core/dependency/controller_binder.dart';
+import 'package:$projectPath/core/router/app_router.dart';
 
 import 'core/theme/app_theme.dart';
 
@@ -95,6 +95,8 @@ class MyApp extends StatelessWidget {
       // ── core/constants ─────────────────────────────────────────────────
       'lib/core/constants/app_urls.dart': '''class AppUrls {
   static const String _baseUrl = 'https://your-api-url.com/api/v1';
+ 
+  static const String login = '\$_baseUrl/auth/login/';
 
   static const String refreshToken = '\$_baseUrl/auth/refresh-token/';
 
@@ -120,7 +122,7 @@ class MyApp extends StatelessWidget {
 
       // ── core/dependency ────────────────────────────────────────────────
       'lib/core/dependency/controller_binder.dart': '''import 'package:get/get.dart';
-import 'package:$pkg/controller/credential/credential_controller.dart';
+import 'package:$projectPath/controller/credential/credential_controller.dart';
 
 class ControllerBinder extends Bindings {
   @override
@@ -203,7 +205,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:get/get.dart' hide Response, MultipartFile;
 import 'package:http/http.dart';
-import 'package:$pkg/view/auth/sign_in_view.dart';
+import 'package:$projectPath/view/auth/sign_in_view.dart';
 import '../../controller/credential/credential_controller.dart';
 import '../constants/app_urls.dart';
 import '../error/app_exception.dart';
@@ -468,10 +470,10 @@ class NetworkApiService extends BaseApiService {
 
       // ── core/router ────────────────────────────────────────────────────
       'lib/core/router/app_router.dart': '''import 'package:get/get.dart';
-import 'package:$pkg/view/auth/sign_in_view.dart';
-import 'package:$pkg/view/auth/sign_up_view.dart';
-import 'package:$pkg/view/auth/splash_view.dart';
-import 'package:$pkg/view/home/home_view.dart';
+import 'package:$projectPath/view/auth/sign_in_view.dart';
+import 'package:$projectPath/view/auth/sign_up_view.dart';
+import 'package:$projectPath/view/auth/splash_view.dart';
+import 'package:$projectPath/view/home/home_view.dart';
 
 class AppRouter {
   static final routes = [
@@ -737,11 +739,11 @@ class CredentialController extends GetxController {
 ''',
 
       'lib/controller/auth/sign_in_controller.dart': '''import 'package:get/get.dart';
-import 'package:$pkg/core/network/network_api_service.dart';
-import 'package:$pkg/core/utils/logger.dart';
-import 'package:$pkg/model/auth/login_request_model.dart';
-import 'package:$pkg/repository/auth/auth_repo.dart';
-import 'package:$pkg/view/home/home_view.dart';
+import 'package:$projectPath/core/network/network_api_service.dart';
+import 'package:$projectPath/core/utils/logger.dart';
+import 'package:$projectPath/model/auth/login_request_model.dart';
+import 'package:$projectPath/repository/auth/auth_repo.dart';
+import 'package:$projectPath/view/home/home_view.dart';
 
 class SignInController extends GetxController {
   final _authRepo = AuthRepo();
@@ -765,8 +767,8 @@ class SignInController extends GetxController {
 ''',
 
       'lib/controller/auth/sign_up_controller.dart': '''import 'package:get/get.dart';
-import 'package:$pkg/core/utils/logger.dart';
-import 'package:$pkg/view/auth/sign_in_view.dart';
+import 'package:$projectPath/core/utils/logger.dart';
+import 'package:$projectPath/view/auth/sign_in_view.dart';
 
 class SignUpController extends GetxController {
   final RxBool isLoading = false.obs;
@@ -806,17 +808,16 @@ class SignUpController extends GetxController {
 ''',
 
       // ── repository ─────────────────────────────────────────────────────
-      'lib/repository/auth/auth_repo.dart': '''import 'package:$pkg/core/constants/app_urls.dart';
-import 'package:$pkg/core/network/network_api_service.dart';
-import 'package:$pkg/model/auth/login_request_model.dart';
+      'lib/repository/auth/auth_repo.dart': '''import 'package:$projectPath/core/constants/app_urls.dart';
+import 'package:$projectPath/core/network/network_api_service.dart';
+import 'package:$projectPath/model/auth/login_request_model.dart';
 
 class AuthRepo {
   final NetworkApiService _apiService = NetworkApiService();
 
   Future<dynamic> login(LoginRequestModel model) async {
     return await _apiService.postRequest(
-      // TODO: Update with your login endpoint
-      '\${AppUrls._baseUrl}/auth/login/',
+      AppUrls.login,
       model.toJson(),
     );
   }
@@ -826,7 +827,7 @@ class AuthRepo {
       // ── shared widgets ─────────────────────────────────────────────────
       'lib/shared/app_button.dart': '''import 'package:flutter/material.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
-import 'package:$pkg/core/theme/app_colors.dart';
+import 'package:$projectPath/core/theme/app_colors.dart';
 
 class AppButton extends StatelessWidget {
   final String label;
@@ -877,7 +878,7 @@ class AppButton extends StatelessWidget {
 ''',
 
       'lib/shared/app_text_field.dart': '''import 'package:flutter/material.dart';
-import 'package:$pkg/core/theme/app_colors.dart';
+import 'package:$projectPath/core/theme/app_colors.dart';
 
 class AppTextField extends StatelessWidget {
   final String hint;
@@ -933,7 +934,7 @@ class AppTextField extends StatelessWidget {
 ''',
 
       'lib/shared/app_text.dart': '''import 'package:flutter/material.dart';
-import 'package:$pkg/core/theme/app_colors.dart';
+import 'package:$projectPath/core/theme/app_colors.dart';
 
 class AppText extends StatelessWidget {
   final String text;
@@ -988,7 +989,7 @@ class AppText extends StatelessWidget {
 
       'lib/shared/app_otp_field.dart': '''import 'package:flutter/material.dart';
 import 'package:pinput/pinput.dart';
-import 'package:$pkg/core/theme/app_colors.dart';
+import 'package:$projectPath/core/theme/app_colors.dart';
 
 class AppOtpField extends StatelessWidget {
   final void Function(String)? onCompleted;
@@ -1037,7 +1038,7 @@ class AppOtpField extends StatelessWidget {
 ''',
 
       'lib/shared/custom_app_bar.dart': '''import 'package:flutter/material.dart';
-import 'package:$pkg/core/theme/app_colors.dart';
+import 'package:$projectPath/core/theme/app_colors.dart';
 
 class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
@@ -1080,8 +1081,8 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
 ''',
 
       'lib/shared/lebeled_text_field.dart': '''import 'package:flutter/material.dart';
-import 'package:$pkg/core/theme/app_colors.dart';
-import 'package:$pkg/shared/app_text_field.dart';
+import 'package:$projectPath/core/theme/app_colors.dart';
+import 'package:$projectPath/shared/app_text_field.dart';
 
 class LabeledTextField extends StatelessWidget {
   final String label;
@@ -1132,7 +1133,7 @@ class LabeledTextField extends StatelessWidget {
 ''',
 
       'lib/shared/or_divider.dart': '''import 'package:flutter/material.dart';
-import 'package:$pkg/core/theme/app_colors.dart';
+import 'package:$projectPath/core/theme/app_colors.dart';
 
 class OrDivider extends StatelessWidget {
   const OrDivider({super.key});
@@ -1166,8 +1167,8 @@ class OrDivider extends StatelessWidget {
       // ── views ──────────────────────────────────────────────────────────
       'lib/view/auth/splash_view.dart': '''import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:$pkg/core/theme/app_colors.dart';
-import 'package:$pkg/view/auth/sign_in_view.dart';
+import 'package:$projectPath/core/theme/app_colors.dart';
+import 'package:$projectPath/view/auth/sign_in_view.dart';
 
 class SplashView extends StatefulWidget {
   const SplashView({super.key});
@@ -1214,12 +1215,12 @@ class _SplashViewState extends State<SplashView> {
 
       'lib/view/auth/sign_in_view.dart': '''import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:$pkg/controller/auth/sign_in_controller.dart';
-import 'package:$pkg/core/validators/validators.dart';
-import 'package:$pkg/shared/app_button.dart';
-import 'package:$pkg/shared/app_text.dart';
-import 'package:$pkg/shared/lebeled_text_field.dart';
-import 'package:$pkg/view/auth/sign_up_view.dart';
+import 'package:$projectPath/controller/auth/sign_in_controller.dart';
+import 'package:$projectPath/core/validators/validators.dart';
+import 'package:$projectPath/shared/app_button.dart';
+import 'package:$projectPath/shared/app_text.dart';
+import 'package:$projectPath/shared/lebeled_text_field.dart';
+import 'package:$projectPath/view/auth/sign_up_view.dart';
 
 class SignInView extends StatelessWidget {
   static const String routeName = '/sign-in';
@@ -1304,11 +1305,11 @@ class SignInView extends StatelessWidget {
 
       'lib/view/auth/sign_up_view.dart': '''import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:$pkg/controller/auth/sign_up_controller.dart';
-import 'package:$pkg/core/validators/validators.dart';
-import 'package:$pkg/shared/app_button.dart';
-import 'package:$pkg/shared/app_text.dart';
-import 'package:$pkg/shared/lebeled_text_field.dart';
+import 'package:$projectPath/controller/auth/sign_up_controller.dart';
+import 'package:$projectPath/core/validators/validators.dart';
+import 'package:$projectPath/shared/app_button.dart';
+import 'package:$projectPath/shared/app_text.dart';
+import 'package:$projectPath/shared/lebeled_text_field.dart';
 
 class SignUpView extends StatelessWidget {
   static const String routeName = '/sign-up';
@@ -1400,8 +1401,8 @@ class SignUpView extends StatelessWidget {
 ''',
 
       'lib/view/home/home_view.dart': '''import 'package:flutter/material.dart';
-import 'package:$pkg/shared/custom_app_bar.dart';
-import 'package:$pkg/shared/app_text.dart';
+import 'package:$projectPath/shared/custom_app_bar.dart';
+import 'package:$projectPath/shared/app_text.dart';
 
 class HomeView extends StatelessWidget {
   static const String routeName = '/home';
@@ -1413,7 +1414,7 @@ class HomeView extends StatelessWidget {
     return Scaffold(
       appBar: CustomAppBar(title: 'Home', showBack: false),
       body: const Center(
-        child: AppText.body('Welcome to your app! 🚀'),
+        child: AppText('Welcome to your app! 🚀'),
       ),
     );
   }

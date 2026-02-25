@@ -78,7 +78,6 @@ class CliRunner {
   Future<void> run(List<String> args) async {
     printBanner();
 
-    // Auto-detect environment on every invocation
     stdout.write(gray('  Scanning environment...'));
     _env = await _detectEnvironment();
     stdout.write('\r                                    \r');
@@ -117,72 +116,116 @@ class CliRunner {
   }
 
   Future<FlutterInfo> _detectFlutter() async {
-    // Try machine-readable output first
-    var result = await _runCommand('flutter --version --machine');
-    if (result.$1 == 0 && result.$2.trim().isNotEmpty) {
-      final out = result.$2;
-      final versionMatch = RegExp(r'"frameworkVersion"\s*:\s*"([^"]+)"').firstMatch(out);
-      final channelMatch = RegExp(r'"channel"\s*:\s*"([^"]+)"').firstMatch(out);
-      final dartMatch = RegExp(r'"dartSdkVersion"\s*:\s*"([^"]+)"').firstMatch(out);
-      final pathResult = await _runCommand('which flutter');
-      return FlutterInfo(
-        available: true,
-        version: versionMatch?.group(1) ?? 'unknown',
-        channel: channelMatch?.group(1) ?? 'unknown',
-        dartVersion: dartMatch?.group(1)?.split(' ').first ?? 'unknown',
-        path: pathResult.$2.trim(),
-      );
+    // FIX 1: `flutter --version --machine` writes JSON to STDERR, not stdout.
+    // Capture stderr for the machine-readable attempt.
+    var result = await _runCommandFull('flutter --version --machine');
+    final machineOut = result.stderr.trim().isNotEmpty
+        ? result.stderr
+        : result.stdout; // some versions may write to stdout
+
+    if (result.exitCode == 0 && machineOut.trim().isNotEmpty) {
+      final versionMatch =
+      RegExp(r'"frameworkVersion"\s*:\s*"([^"]+)"').firstMatch(machineOut);
+      final channelMatch =
+      RegExp(r'"channel"\s*:\s*"([^"]+)"').firstMatch(machineOut);
+      final dartMatch =
+      RegExp(r'"dartSdkVersion"\s*:\s*"([^"]+)"').firstMatch(machineOut);
+
+      if (versionMatch != null) {
+        final pathResult = await _resolveExecutablePath('flutter');
+        return FlutterInfo(
+          available: true,
+          version: versionMatch.group(1) ?? 'unknown',
+          channel: channelMatch?.group(1) ?? 'unknown',
+          // FIX 2: dartSdkVersion may look like "3.3.0 (build 3.3.0)" — take first token
+          dartVersion: (dartMatch?.group(1) ?? 'unknown').split(' ').first,
+          path: pathResult,
+        );
+      }
     }
 
-    // Fallback: plain text
-    result = await _runCommand('flutter --version');
-    if (result.$1 != 0) return const FlutterInfo(available: false);
+    // Fallback: plain text `flutter --version` (writes to stdout)
+    result = await _runCommandFull('flutter --version');
+    if (result.exitCode != 0 ||
+        (result.stdout.trim().isEmpty && result.stderr.trim().isEmpty)) {
+      return const FlutterInfo(available: false);
+    }
 
-    final out = result.$2;
-    final versionMatch = RegExp(r'Flutter\s+(\S+)').firstMatch(out);
+    // Combine stdout+stderr for plain-text parsing (some versions mix them)
+    final out = '${result.stdout}\n${result.stderr}';
+    final versionMatch = RegExp(r'Flutter\s+(\d+\.\d+\.\d+\S*)').firstMatch(out);
     final channelMatch = RegExp(r'channel\s+(\S+)').firstMatch(out);
-    final dartMatch = RegExp(r'Dart\s+(\S+)').firstMatch(out);
-    final pathResult = await _runCommand('which flutter');
+    // FIX 3: Dart version line looks like "Dart SDK version: 3.x.x ..."
+    final dartMatch =
+    RegExp(r'Dart(?:\s+SDK(?:\s+version)?)?\s+(\d+\.\d+\.\d+\S*)').firstMatch(out);
+    final pathResult = await _resolveExecutablePath('flutter');
 
     return FlutterInfo(
-      available: true,
+      available: versionMatch != null,
       version: versionMatch?.group(1) ?? 'unknown',
       channel: channelMatch?.group(1) ?? 'unknown',
       dartVersion: dartMatch?.group(1) ?? 'unknown',
-      path: pathResult.$2.trim(),
+      path: pathResult,
     );
   }
 
   Future<FvmInfo> _detectFvm() async {
-    final versionResult = await _runCommand('fvm --version');
-    if (versionResult.$1 != 0) return const FvmInfo(available: false);
+    final versionResult = await _runCommandFull('fvm --version');
+    if (versionResult.exitCode != 0) return const FvmInfo(available: false);
 
-    final fvmVersion = versionResult.$2.trim().split('\n').first;
-    final listResult = await _runCommand('fvm list');
+    // FIX 4: version output may start with blank lines; skip them
+    final fvmVersion = (versionResult.stdout.trim().isNotEmpty
+        ? versionResult.stdout
+        : versionResult.stderr)
+        .trim()
+        .split('\n')
+        .map((l) => l.trim())
+        .firstWhere((l) => l.isNotEmpty, orElse: () => 'unknown');
+
+    final listResult = await _runCommandFull('fvm list');
     final installedVersions = <String>[];
     String? activeVersion;
 
-    if (listResult.$1 == 0) {
-      final lines = listResult.$2.split('\n');
-      for (final line in lines) {
+    final listOut = listResult.exitCode == 0
+        ? '${listResult.stdout}\n${listResult.stderr}'
+        : '';
+
+    if (listOut.trim().isNotEmpty) {
+      // FIX 5: Improved FVM list parsing
+      // FVM 3.x output columns: SDK Version | Channel | Release Date | Active
+      // FVM 2.x output: lines with optional ✓ / → prefix
+      for (final line in listOut.split('\n')) {
         final trimmed = line.trim();
+
+        // Skip header/separator lines
         if (trimmed.isEmpty ||
             trimmed.startsWith('Cache') ||
-            trimmed.startsWith('─') ||
-            trimmed.startsWith('Flutter')) continue;
+            RegExp(r'^[─═\-─]+$').hasMatch(trimmed) ||
+            trimmed.toLowerCase().startsWith('sdk version') ||
+            trimmed.toLowerCase().startsWith('flutter sdk') ||
+            trimmed.toLowerCase().startsWith('no sdk')) continue;
 
-        final vMatch =
-            RegExp(r'(\d+\.\d+\.\d+\S*|stable|beta|master|main)').firstMatch(trimmed);
+        // Extract version token (semver OR named channel like stable/beta/master/main)
+        final vMatch = RegExp(
+          r'(\d+\.\d+\.\d+(?:[+\-]\S*)?|stable|beta|dev|master|main)',
+        ).firstMatch(trimmed);
         if (vMatch == null) continue;
+
         final v = vMatch.group(1)!;
 
+        // Detect active markers used across FVM versions
         final isActive = trimmed.contains('✓') ||
-            trimmed.contains('active') ||
+            trimmed.contains('✔') ||
             trimmed.startsWith('→') ||
-            trimmed.contains('(active)');
+            trimmed.startsWith('▶') ||
+            RegExp(r'\bactive\b', caseSensitive: false).hasMatch(trimmed) ||
+            trimmed.contains('(active)') ||
+            trimmed.contains('* ');
 
-        installedVersions.add(v);
-        if (isActive) activeVersion = v;
+        if (!installedVersions.contains(v)) {
+          installedVersions.add(v);
+        }
+        if (isActive && activeVersion == null) activeVersion = v;
       }
     }
 
@@ -270,8 +313,11 @@ class CliRunner {
       final active = fvm.activeVersion != null
           ? gray(' · active: ') + green(fvm.activeVersion!)
           : '';
-      print(gray('  │  ') + green('✔ FVM ') + white(fvm.fvmVersion) +
-          gray(' · $vCount') + active);
+      print(gray('  │  ') +
+          green('✔ FVM ') +
+          white(fvm.fvmVersion) +
+          gray(' · $vCount') +
+          active);
     } else {
       print(gray('  │  ') + yellow('⚠ FVM not installed'));
     }
@@ -351,13 +397,11 @@ class CliRunner {
     print(cyan('  ═══════════════════════════════════════════════════'));
     print('');
 
-    // Step 1 — Runner
     printStep(1, 4, 'Flutter Runner');
     printDivider();
     final runnerInfo = await _selectRunner();
     print('');
 
-    // Step 2 — Project details
     printStep(2, 4, 'Project Details');
     printDivider();
 
@@ -383,7 +427,6 @@ class CliRunner {
     printInfo('Package ID  : ${yellow(packageName)}');
     print('');
 
-    // Step 3 — Location
     printStep(3, 4, 'Project Location');
     printDivider();
     final basePath = await _selectLocation();
@@ -394,11 +437,13 @@ class CliRunner {
       print('');
       printWarning('Directory already exists.');
       final overwrite = confirm('Overwrite?', defaultYes: false);
-      if (!overwrite) { printInfo('Aborted.'); exit(0); }
+      if (!overwrite) {
+        printInfo('Aborted.');
+        exit(0);
+      }
     }
     print('');
 
-    // Step 4 — Summary & confirm
     printStep(4, 4, 'Confirm & Create');
     printDivider();
     _printSummary(
@@ -409,7 +454,10 @@ class CliRunner {
     );
 
     final ok = confirm('Proceed?', defaultYes: true);
-    if (!ok) { printInfo('Aborted.'); exit(0); }
+    if (!ok) {
+      printInfo('Aborted.');
+      exit(0);
+    }
     print('');
 
     await _createProject(
@@ -421,7 +469,7 @@ class CliRunner {
     );
   }
 
-  // ─── Runner picker (fully driven by auto-detection) ─────────────────────
+  // ─── Runner picker ────────────────────────────────────────────────────────
 
   Future<_RunnerInfo> _selectRunner() async {
     final f = _env.flutter;
@@ -438,18 +486,15 @@ class CliRunner {
     }
 
     if (fvm.available) {
-      if (fvm.installedVersions.isNotEmpty) {
-        for (final v in fvm.installedVersions) {
-          final tag = v == fvm.activeVersion ? '  ← active' : '';
-          options.add(_RunnerOption(
-            label: 'FVM  →  $v$tag',
-            command: 'fvm flutter',
-            isFvm: true,
-            version: v,
-          ));
-        }
+      for (final v in fvm.installedVersions) {
+        final tag = v == fvm.activeVersion ? '  ← active' : '';
+        options.add(_RunnerOption(
+          label: 'FVM  →  $v$tag',
+          command: 'fvm flutter',
+          isFvm: true,
+          version: v,
+        ));
       }
-      // Always allow installing a new FVM version
       options.add(_RunnerOption(
         label: 'FVM  →  install a different version…',
         command: 'fvm flutter',
@@ -525,7 +570,8 @@ class CliRunner {
         return androidPath;
       case 2:
         final raw = prompt('Full path', defaultValue: Directory.current.path);
-        final expanded = raw.startsWith('~') ? raw.replaceFirst('~', home) : raw;
+        final expanded =
+        raw.startsWith('~') ? raw.replaceFirst('~', home) : raw;
         final dir = Directory(expanded);
         if (!await dir.exists()) {
           await dir.create(recursive: true);
@@ -553,8 +599,10 @@ class CliRunner {
     print(gray('  │  ') + gray('Runner  : ') + magenta(runnerLabel));
     print(gray('  │'));
     print(gray('  │  ') + white('Dependencies:'));
-    final deps = ['get', 'logger', 'top_snackbar_flutter', 'fluttertoast',
-                  'http', 'loading_animation_widget', 'get_storage', 'pinput'];
+    final deps = [
+      'get', 'logger', 'top_snackbar_flutter', 'fluttertoast',
+      'http', 'loading_animation_widget', 'get_storage', 'pinput'
+    ];
     for (var i = 0; i < deps.length; i += 4) {
       final row = deps.skip(i).take(4).map(cyan).join(gray('  '));
       print(gray('  │    ') + row);
@@ -572,7 +620,6 @@ class CliRunner {
     required String packageName,
     required String orgName,
   }) async {
-    // 1. flutter create
     print(cyan('  ● Running ${runnerInfo.command} create...'));
     final createCmd =
         '${runnerInfo.command} create --org $orgName --project-name $projectName "$projectPath"';
@@ -583,15 +630,14 @@ class CliRunner {
     }
     printSuccess('Flutter project scaffolded!');
 
-    // 2. FVM pin
     if (runnerInfo.isFvm) {
       print('');
       print(cyan('  ● Pinning FVM version ${runnerInfo.version}...'));
-      await _runCommandLive('cd "$projectPath" && fvm use ${runnerInfo.version} --force');
+      await _runCommandLive(
+          'cd "$projectPath" && fvm use ${runnerInfo.version} --force');
       printSuccess('.fvmrc created in project root');
     }
 
-    // 3. MVC files
     print('');
     print(cyan('  ● Writing MVC structure & source files...'));
     final creator = ProjectCreator(
@@ -603,13 +649,11 @@ class CliRunner {
     await creator.writeAllFiles();
     printSuccess('Source files written!');
 
-    // 4. pubspec
     print('');
     print(cyan('  ● Updating pubspec.yaml...'));
     await creator.updatePubspec();
     printSuccess('Dependencies added!');
 
-    // 5. pub get
     print('');
     print(cyan('  ● Running pub get...'));
     final pubResult = await _runCommandLive(
@@ -618,7 +662,8 @@ class CliRunner {
     if (pubResult == 0) {
       printSuccess('All packages installed!');
     } else {
-      printWarning('pub get had issues. Run manually: ${runnerInfo.command} pub get');
+      printWarning(
+          'pub get had issues. Run manually: ${runnerInfo.command} pub get');
     }
 
     print('');
@@ -636,8 +681,10 @@ class CliRunner {
     print('    ${cyan('\$')} ${runner.command} run');
     print('');
     if (runner.isFvm) {
-      print(gray('  Tip: Project is pinned to Flutter ${runner.version} via FVM.'));
-      print(gray('       Android Studio / VS Code will use this version automatically.'));
+      print(gray(
+          '  Tip: Project is pinned to Flutter ${runner.version} via FVM.'));
+      print(gray(
+          '       Android Studio / VS Code will use this version automatically.'));
       print('');
     }
     print(gray('  Path: $path'));
@@ -648,13 +695,38 @@ class CliRunner {
 
   // ─── Low-level helpers ────────────────────────────────────────────────────
 
-  Future<(int, String)> _runCommand(String cmd) async {
-    final r = await Process.run('bash', ['-c', cmd], runInShell: true);
-    return (r.exitCode, r.stdout.toString());
+  /// Run a command and capture both stdout and stderr separately.
+  Future<({int exitCode, String stdout, String stderr})> _runCommandFull(
+      String cmd) async {
+    final r = await Process.run(
+      'bash',
+      ['-c', cmd],
+      runInShell: true,
+    );
+    return (
+    exitCode: r.exitCode,
+    stdout: r.stdout.toString(),
+    stderr: r.stderr.toString(),
+    );
+  }
+
+  /// Resolve the full path of an executable using `which` (Unix) or
+  /// `where` (Windows), with a graceful fallback.
+  Future<String> _resolveExecutablePath(String executable) async {
+    // Try `which` first (macOS/Linux), then `where` (Windows)
+    for (final cmd in ['which $executable', 'where $executable']) {
+      final r = await Process.run('bash', ['-c', cmd], runInShell: true);
+      final out = r.stdout.toString().trim();
+      if (r.exitCode == 0 && out.isNotEmpty) {
+        return out.split('\n').first.trim();
+      }
+    }
+    return '';
   }
 
   Future<int> _runCommandLive(String cmd) async {
-    final proc = await Process.start('bash', ['-c', cmd], runInShell: true);
+    final proc =
+    await Process.start('bash', ['-c', cmd], runInShell: true);
     proc.stdout.listen((d) => stdout.add(d));
     proc.stderr.listen((d) => stderr.add(d));
     return await proc.exitCode;

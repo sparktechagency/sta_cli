@@ -1445,9 +1445,9 @@ class HomeView extends StatelessWidget {
       'pinput': null,
     };
 
-    // Build dependencies string (null means latest version, no version constraint)
-    final depsString = depsToAdd.entries
-        .map((e) => e.value == null ? '  ${e.key}:' : '  ${e.key}: ${e.value}')
+    // Build dependencies string (no version = use latest)
+    final depsString = depsToAdd.keys
+        .map((dep) => '  $dep:')
         .join('\n');
 
     // Check if dependencies already exist and skip those

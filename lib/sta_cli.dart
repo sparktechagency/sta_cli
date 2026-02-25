@@ -1,4 +1,3 @@
-library sta_cli;
 
 export 'src/cli_runner.dart';
 export 'src/colors.dart';

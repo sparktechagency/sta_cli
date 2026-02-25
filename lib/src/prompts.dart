@@ -3,7 +3,7 @@ import 'colors.dart';
 
 /// Prompt user with a question and return the answer.
 String prompt(String question, {String? defaultValue}) {
-  final defStr = defaultValue != null ? gray(' (${defaultValue})') : '';
+  final defStr = defaultValue != null ? gray(' ($defaultValue)') : '';
   stdout.write('  ${cyan('?')} $question$defStr: ');
   var input = stdin.readLineSync()?.trim() ?? '';
   // Remove any surrounding quotes that might be pasted from file explorer

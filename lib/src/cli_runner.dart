@@ -215,13 +215,17 @@ class CliRunner {
             RegExp(r'^[─═\-─]+$').hasMatch(trimmed) ||
             trimmed.toLowerCase().startsWith('sdk version') ||
             trimmed.toLowerCase().startsWith('flutter sdk') ||
-            trimmed.toLowerCase().startsWith('no sdk')) continue;
+            trimmed.toLowerCase().startsWith('no sdk')) {
+          continue;
+        }
 
         // Extract version token (semver OR named channel like stable/beta/master/main)
         final vMatch = RegExp(
           r'(\d+\.\d+\.\d+(?:[+\-]\S*)?|stable|beta|dev|master|main)',
         ).firstMatch(trimmed);
-        if (vMatch == null) continue;
+        if (vMatch == null) {
+          continue;
+        }
 
         final v = vMatch.group(1)!;
 

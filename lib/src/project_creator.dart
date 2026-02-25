@@ -134,38 +134,76 @@ class ControllerBinder extends Bindings {
 ''',
 
       // ── core/error ─────────────────────────────────────────────────────
-      'lib/core/error/app_exception.dart': '''class AppException implements Exception {
+      'lib/core/error/app_exception.dart': '''
+import 'dart:convert';
+
+class AppException implements Exception {
   final String message;
   final String prefix;
+  final bool success;
 
-  AppException(this.message, this.prefix);
+  AppException({
+    required this.message,
+    this.prefix = '',
+    this.success = false,
+  });
+
+  String get msg {
+    final m = message.trim();
+    if (m.isEmpty);
+    return m;
+  }
+
+  Map<String, dynamic> toJson() => {
+    "success": success,
+    "prefix": prefix,
+    "message": message,
+    "msg": msg,
+  };
 
   @override
-  String toString() => '\$prefix\$message';
+  String toString() => msg;
 }
 
 class FetchDataException extends AppException {
-  FetchDataException(super.message) : super('Network Error: ');
-}
+  FetchDataException([String message = ''])
+      : super(message: message, prefix: 'Error During communication');
 
-class BadRequestException extends AppException {
-  BadRequestException(super.message) : super('Bad Request: ');
-}
-
-class UnAuthorException extends AppException {
-  UnAuthorException(super.message) : super('Unauthorized: ');
-}
-
-class ConflictException extends AppException {
-  ConflictException(super.message) : super('Conflict: ');
+  @override
+  String toString() => jsonEncode(toJson());
 }
 
 class AppTimeoutException extends AppException {
-  AppTimeoutException(super.message) : super('Timeout: ');
+  AppTimeoutException([String message = ''])
+      : super(message: message, prefix: 'Timeout Error');
+
+  @override
+  String toString() => jsonEncode(toJson());
+}
+
+class BadRequestException extends AppException {
+  BadRequestException([String message = ''])
+      : super(message: message, prefix: 'Bad Request');
+}
+
+class UnAuthorException extends AppException {
+  UnAuthorException([String message = ''])
+      : super(message: message, prefix: 'Unauthorized');
+}
+
+class ConflictException extends AppException {
+  ConflictException([String message = ''])
+      : super(message: message, prefix: 'Conflict');
 }
 
 class UnIdentifyException extends AppException {
-  UnIdentifyException(super.message) : super('Unknown Error: ');
+  UnIdentifyException([String message = ''])
+      : super(message: message, prefix: 'Unknown');
+}
+
+class InvalidInputException extends AppException {
+  InvalidInputException([String message = ''])
+      : super(message: message, prefix: 'Invalid Input');
 }
 ''',
 

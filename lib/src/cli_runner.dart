@@ -12,6 +12,7 @@ class FlutterInfo {
   final String channel;
   final String dartVersion;
   final String path;
+  final bool isViaFvm;  // true if detected via 'fvm flutter'
 
   const FlutterInfo({
     required this.available,
@@ -19,6 +20,7 @@ class FlutterInfo {
     this.channel = '',
     this.dartVersion = '',
     this.path = '',
+    this.isViaFvm = false,
   });
 }
 
@@ -125,6 +127,8 @@ class CliRunner {
   }
 
   Future<FlutterInfo> _tryDetectFlutter(String flutterCmd) async {
+    final isViaFvm = flutterCmd != 'flutter';
+
     // Try `flutter --version --machine` first (JSON output)
     var result = await _runCommandFull('$flutterCmd --version --machine');
     final machineOut = result.stderr.trim().isNotEmpty
@@ -146,7 +150,8 @@ class CliRunner {
           version: versionMatch.group(1) ?? 'unknown',
           channel: channelMatch?.group(1) ?? 'unknown',
           dartVersion: (dartMatch?.group(1) ?? 'unknown').split(' ').first,
-          path: flutterCmd == 'flutter' ? pathResult : '(via FVM)',
+          path: isViaFvm ? '(via FVM)' : pathResult,
+          isViaFvm: isViaFvm,
         );
       }
     }
@@ -171,7 +176,8 @@ class CliRunner {
       version: versionMatch?.group(1) ?? 'unknown',
       channel: channelMatch?.group(1) ?? 'unknown',
       dartVersion: dartMatch?.group(1) ?? 'unknown',
-      path: flutterCmd == 'flutter' ? pathResult : '(via FVM)',
+      path: isViaFvm ? '(via FVM)' : pathResult,
+      isViaFvm: isViaFvm,
     );
   }
 
@@ -483,7 +489,8 @@ class CliRunner {
     final fvm = _env.fvm;
     final options = <_RunnerOption>[];
 
-    if (f.available) {
+    // Only add system Flutter option if it's NOT detected via FVM
+    if (f.available && !f.isViaFvm) {
       options.add(_RunnerOption(
         label: 'Flutter ${f.version} (${f.channel})  ← system install',
         command: 'flutter',

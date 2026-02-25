@@ -2,6 +2,8 @@
 
 **STA CLI** is a Dart-based command-line tool to scaffold Flutter projects with a clean **MVC architecture** powered by GetX.
 
+> **Version 0.1.1** — Now with full Windows support!
+
 ---
 
 ## ✨ What It Generates
@@ -34,19 +36,34 @@ pinput: ^5.0.0
 
 ### Option 1 — Activate globally (Recommended)
 
+**macOS / Linux:**
 ```bash
 dart pub global activate --source path /path/to/sta_cli
+```
+
+**Windows (PowerShell):**
+```powershell
+dart pub global activate --source path C:\path\to\sta_cli
 ```
 
 Then use from anywhere:
 ```bash
 sta create
 sta create my_app
+sta doctor
 ```
 
 ### Option 2 — Run directly with Dart
 
+**macOS / Linux:**
 ```bash
+cd sta_cli
+dart pub get
+dart run bin/sta.dart create
+```
+
+**Windows (PowerShell):**
+```powershell
 cd sta_cli
 dart pub get
 dart run bin/sta.dart create
@@ -54,12 +71,21 @@ dart run bin/sta.dart create
 
 ### Option 3 — Compile to native executable
 
+**macOS / Linux:**
 ```bash
 cd sta_cli
 dart pub get
 dart compile exe bin/sta.dart -o sta
 # Move to your PATH:
 sudo mv sta /usr/local/bin/sta
+```
+
+**Windows (PowerShell):**
+```powershell
+cd sta_cli
+dart pub get
+dart compile exe bin/sta.dart -o sta.exe
+# Move sta.exe to a folder in your PATH
 ```
 
 ---
@@ -69,8 +95,35 @@ sudo mv sta /usr/local/bin/sta
 ```
 sta create                    Interactive project creation
 sta create my_awesome_app     Create project with given name
+sta doctor                    Show environment info (Flutter & FVM)
 sta --help                    Show help
 sta --version                 Show version
+```
+
+---
+
+## 🩺 Environment Doctor
+
+Run `sta doctor` to check your Flutter and FVM setup:
+
+```
+  ═══════════════════════════════════════════════════
+                  ENVIRONMENT DOCTOR
+  ═══════════════════════════════════════════════════
+
+  ✔ Flutter detected
+      Version : 3.29.3
+      Channel : stable
+      Dart    : 3.7.2
+      Path    : (via FVM)
+
+  ✔ FVM v4.0.4
+      Installed versions:
+      ▶ 3.29.3 ← active
+        3.27.4
+        stable
+
+  ✔ Ready! Run: sta create
 ```
 
 ---
@@ -178,7 +231,21 @@ your_project/
 ## 🛠 Requirements
 
 - Dart SDK ≥ 3.0.0
-- Flutter installed in PATH (or FVM)
+- Flutter installed in PATH **or** FVM (Flutter Version Management)
+- **Supported OS:** Windows, macOS, Linux
+
+---
+
+## 📝 Changelog
+
+### 0.1.2
+- ✅ Full Windows compatibility
+- ✅ Fixed CLI detection for FVM-managed Flutter
+- ✅ Added `sta doctor` command
+- ✅ Improved FVM 4.x version detection
+
+### 0.1.1
+- Initial release
 
 ---
 
